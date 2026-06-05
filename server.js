@@ -12,7 +12,8 @@ const {
   add_user,
   login,
   analyze_food,
-  recalculate_food
+  recalculate_food,
+  getAllUser
 } = require("./controller/app_controller");
 
 const app = express();
@@ -63,6 +64,8 @@ app.get("/fuelsync/profile", (req, res) => {
     email: req.user.email,
   });
 });
+
+app.get("/users",getAllUser);
 
 app.listen(port, () => {
   console.log(chalk.green(`Server running on port ${port}`));

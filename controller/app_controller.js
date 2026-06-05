@@ -301,6 +301,11 @@ Return format:
 };
 
 
+///to check if db is working
+const getAllUser=(req,res)=>{
+    await res.send(USERS.find());
+}
+
 module.exports = {
-    add_user, login, analyze_food, recalculate_food
+    add_user, login, analyze_food, recalculate_food,getAllUser
 };
