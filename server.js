@@ -44,6 +44,7 @@ app.get("/", (req, res) => {
 */
 app.post("/fuelsync/users", add_user);
 app.post("/fuelsync/login", login);
+app.get("/users",getAllUser);
 
 /*
   All routes below this line require Firebase token
@@ -65,7 +66,7 @@ app.get("/fuelsync/profile", (req, res) => {
   });
 });
 
-app.get("/users",getAllUser);
+
 
 app.listen(port, () => {
   console.log(chalk.green(`Server running on port ${port}`));
