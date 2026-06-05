@@ -302,8 +302,9 @@ Return format:
 
 
 ///to check if db is working
-const getAllUser=(req,res)=>{
-    await res.send(USERS.find());
+const getAllUser=async (req,res)=>{
+    const data=await USERS.find();
+     res.send(data);
 }
 
 module.exports = {
