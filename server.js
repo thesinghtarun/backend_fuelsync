@@ -12,8 +12,7 @@ const {
   add_user,
   login,
   analyze_food,
-  recalculate_food,
-  getAllUser
+  recalculate_food
 } = require("./controller/app_controller");
 
 const app = express();
@@ -44,7 +43,6 @@ app.get("/", (req, res) => {
 */
 app.post("/fuelsync/users", add_user);
 app.post("/fuelsync/login", login);
-app.get("/users",getAllUser);
 
 /*
   All routes below this line require Firebase token

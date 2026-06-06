@@ -8,84 +8,244 @@ const ai = new GoogleGenAI({
 });
 
 const add_user = async (req, res) => {
-    try {
-        const {
-            firstname,
-            lastname,
-            email,
-            password,
-            gender,
-            goal,
-            height,
-            weight,
-            dob,
-            firebase_uid
-        } = req.body;
+  try {
+    const {
+      firstname,
+      lastname,
+      email,
+      password,
+      gender,
+      goal,
+      height,
+      weight,
+      dob,
+      firebase_uid,
+    } = req.body;
 
-        // Validation
-        if (
-            !firstname ||
-            !lastname ||
-            !email ||
-            !password ||
-            !gender ||
-            !goal ||
-            !height ||
-            !weight ||
-            !dob ||
-            !firebase_uid
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "All fields are required"
-            });
-        }
-
-        // Check if user already exists
-        const existingUser = await USERS.findOne({
-            $or: [
-                { email: email },
-                { firebase_uid: firebase_uid }
-            ]
-        });
-
-        if (existingUser) {
-            return res.status(409).json({
-                success: false,
-                message: "User already exists"
-            });
-        }
-
-        // Create user
-        const newUser = await USERS.create({
-            firstname,
-            lastname,
-            email,
-            password,
-            gender,
-            goal,
-            height,
-            weight,
-            dob,
-            firebase_uid
-        });
-
-        return res.status(201).json({
-            success: true,
-            message: "User created successfully",
-            data: newUser
-        });
-
-    } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+    if (
+      !firstname ||
+      !lastname ||
+      !email ||
+      !password ||
+      !gender ||
+      !goal ||
+      !height ||
+      !weight ||
+      !dob ||
+      !firebase_uid
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
     }
-};
 
+    const existingUser = await USERS.findOne({
+      $or: [
+        { email },
+        { firebase_uid },
+      ],
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "User already exists",
+      });
+    }
+
+    // -----------------------------
+    // AGE
+    // -----------------------------
+    const birthDate = new Date(dob);
+    const today = new Date();
+
+    let age =
+      today.getFullYear() -
+      birthDate.getFullYear();
+
+    const monthDiff =
+      today.getMonth() -
+      birthDate.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 &&
+        today.getDate() <
+          birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    // -----------------------------
+    // HEIGHT FT -> CM
+    // -----------------------------
+    const heightCm =
+      parseFloat(height) * 30.48;
+
+    const weightKg =
+      parseFloat(weight);
+
+    // -----------------------------
+    // BMR
+    // -----------------------------
+    let bmr = 0;
+
+    if (
+      gender.toLowerCase() === "male"
+    ) {
+      bmr =
+        10 * weightKg +
+        6.25 * heightCm -
+        5 * age +
+        5;
+    } else {
+      bmr =
+        10 * weightKg +
+        6.25 * heightCm -
+        5 * age -
+        161;
+    }
+
+    // -----------------------------
+    // MAINTENANCE CALORIES
+    // Light activity factor
+    // -----------------------------
+    const maintenanceCalories =
+      Math.round(bmr * 1.375);
+
+    let targetCalories =
+      maintenanceCalories;
+
+    // -----------------------------
+    // GOAL
+    // -----------------------------
+    switch (
+      goal.toLowerCase().trim()
+    ) {
+      case "lose":
+      case "lose weight":
+      case "weight loss":
+        targetCalories =
+          maintenanceCalories - 500;
+        break;
+
+      case "gain":
+      case "gain weight":
+      case "weight gain":
+        targetCalories =
+          maintenanceCalories + 500;
+        break;
+
+      case "maintain":
+      default:
+        targetCalories =
+          maintenanceCalories;
+        break;
+    }
+
+    // -----------------------------
+    // MACROS
+    // -----------------------------
+
+    // Protein:
+    // lose = 2g/kg
+    // maintain = 1.6g/kg
+    // gain = 2.2g/kg
+
+    let proteinGoal = 0;
+
+    if (
+      goal.toLowerCase().includes(
+        "lose"
+      )
+    ) {
+      proteinGoal = Math.round(
+        weightKg * 2
+      );
+    } else if (
+      goal.toLowerCase().includes(
+        "gain"
+      )
+    ) {
+      proteinGoal = Math.round(
+        weightKg * 2.2
+      );
+    } else {
+      proteinGoal = Math.round(
+        weightKg * 1.6
+      );
+    }
+
+    // Fat = 25% calories
+    const fatGoal = Math.round(
+      (targetCalories * 0.25) / 9
+    );
+
+    // Remaining calories → carbs
+    const carbCalories =
+      targetCalories -
+      proteinGoal * 4 -
+      fatGoal * 9;
+
+    const carbsGoal =
+      Math.round(carbCalories / 4);
+
+    // -----------------------------
+    // CREATE USER
+    // -----------------------------
+    const newUser =
+      await USERS.create({
+        firstname,
+        lastname,
+        email,
+        password,
+
+        gender,
+        goal,
+
+        height,
+        weight,
+        dob,
+
+        firebase_uid,
+
+        age,
+
+        bmr: Math.round(bmr),
+
+        maintenance_calories:
+          maintenanceCalories,
+
+        target_calories:
+          targetCalories,
+
+        protein_goal:
+          proteinGoal,
+
+        carbs_goal:
+          carbsGoal,
+
+        fat_goal:
+          fatGoal,
+      });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "User created successfully",
+      data: newUser,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Internal Server Error",
+    });
+  }
+};
 
 
 
@@ -301,12 +461,13 @@ Return format:
 };
 
 
-///to check if db is working
-const getAllUser=async (req,res)=>{
-    const data=await USERS.find();
-     res.send(data);
+//To get calories
+const getCalories=(req,res)=>{
+    const {goal,height,weight,dob}=req.body
 }
 
+
+
 module.exports = {
-    add_user, login, analyze_food, recalculate_food,getAllUser
+    add_user, login, analyze_food, recalculate_food
 };
