@@ -12,7 +12,9 @@ const {
   add_user,
   login,
   analyze_food,
-  recalculate_food
+  recalculate_food,
+  saveMeal,
+  getTodayConsumption,
 } = require("./controller/app_controller");
 
 const app = express();
@@ -55,15 +57,17 @@ app.post("/fuelsync/food/analyze",
 
 app.post("/fuelsync/food/recalculate", recalculate_food);
 
-// Example protected route
-app.get("/fuelsync/profile", (req, res) => {
-  res.status(200).json({
-    success: true,
-    firebase_uid: req.firebase_uid,
-    email: req.user.email,
-  });
-});
+// SAVE MEAL
+app.post(
+  "/fuelsync/food/save",
+  saveMeal
+);
 
+// GET TODAY CONSUMPTION
+app.get(
+  "/fuelsync/food/today",
+  getTodayConsumption
+);
 
 
 app.listen(port, () => {

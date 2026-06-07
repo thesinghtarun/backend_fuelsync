@@ -2,6 +2,7 @@ const USERS = require("../models/users.model");
 const { fileTypeFromBuffer } = require("file-type");
 const admin = require("../config/firebase");
 const { GoogleGenAI } = require("@google/genai");
+const FOODLOGS = require("../models/food_logs.model");
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
@@ -461,13 +462,102 @@ Return format:
 };
 
 
-//To get calories
-const getCalories=(req,res)=>{
-    const {goal,height,weight,dob}=req.body
-}
+///To save meal
+
+const saveMeal = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+
+    const {
+      foods,
+      total_calories,
+      total_protein,
+      total_carbs,
+      total_fat,
+    } = req.body;
+
+    if (!foods || !Array.isArray(foods) || foods.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Foods are required",
+      });
+    }
+
+    const meal = await FOODLOGS.create({
+      firebase_uid,
+      foods,
+      total_calories,
+      total_protein,
+      total_carbs,
+      total_fat,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Meal saved successfully",
+      data: meal,
+    });
+  } catch (error) {
+    console.error("SAVE MEAL ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save meal",
+    });
+  }
+};
 
 
+///To get today's consumption
+
+const getTodayConsumption = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const meals = await FOODLOGS.find({
+      firebase_uid,
+      createdAt: {
+        $gte: start,
+        $lte: end,
+      },
+    });
+
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
+
+    meals.forEach((meal) => {
+      totalCalories += meal.total_calories || 0;
+      totalProtein += meal.total_protein || 0;
+      totalCarbs += meal.total_carbs || 0;
+      totalFat += meal.total_fat || 0;
+    });
+
+    return res.status(200).json({
+      success: true,
+      total_calories: totalCalories,
+      total_protein: totalProtein,
+      total_carbs: totalCarbs,
+      total_fat: totalFat,
+      meals,
+    });
+  } catch (error) {
+    console.error("GET TODAY CONSUMPTION ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch consumption",
+    });
+  }
+};
 
 module.exports = {
-    add_user, login, analyze_food, recalculate_food
+    add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption
 };
