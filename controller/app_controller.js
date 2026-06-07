@@ -409,24 +409,43 @@ const recalculate_food = async (req, res) => {
     }
 
     const prompt = `
-You are a nutrition expert.
+You are an expert nutrition database for Indian foods and packaged food products.
 
-Recalculate nutrition values for Indian foods.
-
-Return ONLY valid JSON.
+TASK:
+Recalculate nutrition values using realistic nutrition data and mathematical calculations.
 
 Foods input:
 ${JSON.stringify(foods)}
 
-Rules:
-- Adjust calories/macros based on realistic Indian nutrition data
-- quantity_grams is important
-- DO NOT change food names unless clearly wrong
-- Return corrected totals
+IMPORTANT RULES:
+1. quantity_grams is the most important field.
+2. Use standard nutrition values per 100g.
+3. For packaged foods (Britannia, Parle, Amul, Cadbury, etc.), use official nutrition label values when recognizable.
+4. For common Indian foods, use widely accepted nutrition database values.
+5. Do NOT randomly estimate calories.
+6. Calculate nutrition mathematically from quantity_grams.
+7. Keep food names unchanged unless they are clearly incorrect.
+8. The same food with the same quantity_grams should produce the same result every time.
+9. Ensure calories, protein, carbs, and fat are internally consistent.
+10. Recalculate totals from the corrected food values.
+11. Round all numeric values to 1 decimal place.
+12. Return only realistic values.
+13. If nutrition information is uncertain, choose the most commonly accepted value and use it consistently.
+14. Do not add explanations, notes, markdown, or extra text.
+15. Return ONLY valid JSON.
 
 Return format:
 {
-  "foods": [...],
+  "foods": [
+    {
+      "foods_name": "",
+      "quantity_grams": 0,
+      "calories": 0,
+      "protein": 0,
+      "carbs": 0,
+      "fat": 0
+    }
+  ],
   "total_calories": 0,
   "total_protein": 0,
   "total_carbs": 0,
@@ -466,6 +485,9 @@ Return format:
 
 const saveMeal = async (req, res) => {
   try {
+    console.log("UID =>", req.firebase_uid);
+    console.log("BODY =>", req.body);
+
     const firebase_uid = req.firebase_uid;
 
     const {
@@ -475,14 +497,9 @@ const saveMeal = async (req, res) => {
       total_carbs,
       total_fat,
     } = req.body;
-
-    if (!foods || !Array.isArray(foods) || foods.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Foods are required",
-      });
-    }
-
+console.log("RAW BODY STRING =>", req.body);
+console.log("FOODS TYPE =>", Array.isArray(req.body.foods));
+console.log("FOODS =>", req.body.foods);
     const meal = await FOODLOGS.create({
       firebase_uid,
       foods,
@@ -494,15 +511,17 @@ const saveMeal = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Meal saved successfully",
       data: meal,
     });
+
   } catch (error) {
-    console.error("SAVE MEAL ERROR:", error);
+
+    console.error("SAVE MEAL ERROR:");
+    console.error(error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to save meal",
+      message: error.message, // IMPORTANT
     });
   }
 };
