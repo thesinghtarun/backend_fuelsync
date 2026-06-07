@@ -4,9 +4,41 @@ const admin = require("../config/firebase");
 const { GoogleGenAI } = require("@google/genai");
 const FOODLOGS = require("../models/food_logs.model");
 
-const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-});
+
+async function generateContentWithFallback(config) {
+  const keys = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_ALTERNATE,
+  ].filter(Boolean);
+
+  let lastError;
+
+  for (const key of keys) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: key });
+
+      return await ai.models.generateContent(config);
+    } catch (error) {
+      lastError = error;
+
+      // Try next key only for quota/rate-limit errors
+      if (error.status !== 429) {
+        throw error;
+      }
+
+      console.log(
+        `Quota exceeded for key. Trying next key...`
+      );
+    }
+  }
+
+  throw lastError;
+}
+
+
+// const ai = new GoogleGenAI({
+//     apiKey: process.env.GEMINI_API_KEY,
+// });
 
 const add_user = async (req, res) => {
   try {
@@ -351,20 +383,35 @@ Return format:
 `;
 
         // 4. Gemini call
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [
-                {
-                    text: prompt,
-                },
-                {
-                    inlineData: {
-                        mimeType,
-                        data: req.file.buffer.toString("base64"),
-                    },
-                },
-            ],
-        });
+        // const response = await ai.models.generateContent({
+        //     model: "gemini-2.5-flash",
+        //     contents: [
+        //         {
+        //             text: prompt,
+        //         },
+        //         {
+        //             inlineData: {
+        //                 mimeType,
+        //                 data: req.file.buffer.toString("base64"),
+        //             },
+        //         },
+        //     ],
+        // });
+
+        const response = await generateContentWithFallback({
+    model: "gemini-2.5-flash",
+    contents: [
+        {
+            text: prompt,
+        },
+        {
+            inlineData: {
+                mimeType,
+                data: req.file.buffer.toString("base64"),
+            },
+        },
+    ],
+});
 
         // 5. Safe JSON parsing (IMPORTANT)
         let result;
@@ -434,11 +481,15 @@ Return format:
 }
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ text: prompt }],
-    });
+    // const response = await ai.models.generateContent({
+    //   model: "gemini-2.5-flash",
+    //   contents: [{ text: prompt }],
+    // });
 
+    const response = await generateContentWithFallback({
+  model: "gemini-2.5-flash",
+  contents: [{ text: prompt }],
+});
     let text = response.text
       .replace(/```json/g, "")
       .replace(/```/g, "")
