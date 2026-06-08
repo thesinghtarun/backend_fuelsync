@@ -609,6 +609,59 @@ const getTodayConsumption = async (req, res) => {
   }
 };
 
+//Update Goals
+const updateGoal = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+
+    const {
+      target_calories,
+      protein_goal,
+      carbs_goal,
+      fat_goal,
+    } = req.body;
+
+    const user = await USERS.findOneAndUpdate(
+      { firebase_uid },
+      {
+        ...(target_calories != null && {
+          target_calories: Number(target_calories),
+        }),
+        ...(protein_goal != null && {
+          protein_goal: Number(protein_goal),
+        }),
+        ...(carbs_goal != null && {
+          carbs_goal: Number(carbs_goal),
+        }),
+        ...(fat_goal != null && {
+          fat_goal: Number(fat_goal),
+        }),
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Goal updated successfully",
+      data: user,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update goal",
+    });
+  }
+};
+
 module.exports = {
-    add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption
+    add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal
 };

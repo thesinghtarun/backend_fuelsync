@@ -15,6 +15,7 @@ const {
   recalculate_food,
   saveMeal,
   getTodayConsumption,
+  updateGoal
 } = require("./controller/app_controller");
 
 const app = express();
@@ -61,6 +62,12 @@ app.post("/fuelsync/food/recalculate", recalculate_food);
 app.post(
   "/fuelsync/food/save",
   saveMeal
+);
+
+//UPDATE GOAL
+app.put(
+  "/fuelsync/user/goal",
+  updateGoal
 );
 
 // GET TODAY CONSUMPTION
