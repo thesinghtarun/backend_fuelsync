@@ -15,7 +15,8 @@ const {
   recalculate_food,
   saveMeal,
   getTodayConsumption,
-  updateGoal
+  updateGoal,
+  deleteMeal
 } = require("./controller/app_controller");
 
 const app = express();
@@ -68,6 +69,12 @@ app.post(
 app.put(
   "/fuelsync/user/goal",
   updateGoal
+);
+
+//DELETE MEAL
+app.delete(
+  "/fuelsync/food/:meal_id",
+  deleteMeal
 );
 
 // GET TODAY CONSUMPTION

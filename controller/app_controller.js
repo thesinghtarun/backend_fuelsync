@@ -662,6 +662,38 @@ const updateGoal = async (req, res) => {
   }
 };
 
+//DELETE MEAL
+const deleteMeal = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+    const { meal_id } = req.params;
+
+    const deletedMeal = await FOODLOGS.findOneAndDelete({
+      _id: meal_id,
+      firebase_uid,
+    });
+
+    if (!deletedMeal) {
+      return res.status(404).json({
+        success: false,
+        message: "Meal not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Meal deleted successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete meal",
+    });
+  }
+};
+
 module.exports = {
-    add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal
+    add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal
 };
