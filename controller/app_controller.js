@@ -52,6 +52,7 @@ const add_user = async (req, res) => {
       height,
       weight,
       dob,
+      activity,
       firebase_uid,
     } = req.body;
 
@@ -65,6 +66,7 @@ const add_user = async (req, res) => {
       !height ||
       !weight ||
       !dob ||
+      !activity ||
       !firebase_uid
     ) {
       return res.status(400).json({
@@ -105,7 +107,7 @@ const add_user = async (req, res) => {
       monthDiff < 0 ||
       (monthDiff === 0 &&
         today.getDate() <
-          birthDate.getDate())
+        birthDate.getDate())
     ) {
       age--;
     }
@@ -141,20 +143,45 @@ const add_user = async (req, res) => {
     }
 
     // -----------------------------
-    // MAINTENANCE CALORIES
-    // Light activity factor
+    // ACTIVITY FACTOR
     // -----------------------------
-    const maintenanceCalories =
-      Math.round(bmr * 1.375);
+    let activityFactor = 1.375;
 
-    let targetCalories =
-      maintenanceCalories;
+    switch (activity.toLowerCase().trim()) {
+      case "less than 3 days":
+      case "less than 3 days a week":
+        activityFactor = 1.375;
+        break;
+
+      case "3-5 days":
+      case "3-5 days a week":
+        activityFactor = 1.55;
+        break;
+
+      case "6-7 days":
+      case "6-7 days a week":
+        activityFactor = 1.725;
+        break;
+
+      default:
+        activityFactor = 1.375;
+        break;
+    }
+
+    // -----------------------------
+    // MAINTENANCE CALORIES
+    // -----------------------------
+    const maintenanceCalories = Math.round(
+      bmr * activityFactor
+    );
+
+    let targetCalories = maintenanceCalories;
 
     // -----------------------------
     // GOAL
     // -----------------------------
     switch (
-      goal.toLowerCase().trim()
+    goal.toLowerCase().trim()
     ) {
       case "lose":
       case "lose weight":
@@ -240,6 +267,7 @@ const add_user = async (req, res) => {
         height,
         weight,
         dob,
+        activity,
 
         firebase_uid,
 
@@ -283,61 +311,61 @@ const add_user = async (req, res) => {
 
 
 const login = async (req, res) => {
-    try {
-        const { token } = req.body;
+  try {
+    const { token } = req.body;
 
-        const decodedToken = await admin
-            .auth()
-            .verifyIdToken(token);
+    const decodedToken = await admin
+      .auth()
+      .verifyIdToken(token);
 
-        const firebase_uid = decodedToken.uid;
+    const firebase_uid = decodedToken.uid;
 
-        const user = await USERS.findOne({
-            firebase_uid,
-        });
+    const user = await USERS.findOne({
+      firebase_uid,
+    });
 
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found",
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "Login successful",
-            user,
-        });
-    } catch (err) {
-        return res.status(401).json({
-            success: false,
-            message: "Invalid token",
-        });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      user,
+    });
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid token",
+    });
+  }
 };
 
 
 //To analyze the food
 const analyze_food = async (req, res) => {
-    try {
-        // 1. Check image exists
-        if (!req.file) {
-            console.log("BODY:", req.body);
-            console.log("FILE:", req.file);
+  try {
+    // 1. Check image exists
+    if (!req.file) {
+      console.log("BODY:", req.body);
+      console.log("FILE:", req.file);
 
-            return res.status(400).json({
-                success: false,
-                message: "Image is required",
-            });
-        }
+      return res.status(400).json({
+        success: false,
+        message: "Image is required",
+      });
+    }
 
-        // 2. Detect real image type from buffer (MOST IMPORTANT FIX)
-        const type = await fileTypeFromBuffer(req.file.buffer);
+    // 2. Detect real image type from buffer (MOST IMPORTANT FIX)
+    const type = await fileTypeFromBuffer(req.file.buffer);
 
-        const mimeType = type?.mime || req.file.mimetype || "image/jpeg";
+    const mimeType = type?.mime || req.file.mimetype || "image/jpeg";
 
-        // 3. Prompt
-        const prompt = `
+    // 3. Prompt
+    const prompt = `
 Analyze this food image carefully.
 
 IMPORTANT:
@@ -382,66 +410,66 @@ Return format:
 }
 `;
 
-        // 4. Gemini call
-        // const response = await ai.models.generateContent({
-        //     model: "gemini-2.5-flash",
-        //     contents: [
-        //         {
-        //             text: prompt,
-        //         },
-        //         {
-        //             inlineData: {
-        //                 mimeType,
-        //                 data: req.file.buffer.toString("base64"),
-        //             },
-        //         },
-        //     ],
-        // });
+    // 4. Gemini call
+    // const response = await ai.models.generateContent({
+    //     model: "gemini-2.5-flash",
+    //     contents: [
+    //         {
+    //             text: prompt,
+    //         },
+    //         {
+    //             inlineData: {
+    //                 mimeType,
+    //                 data: req.file.buffer.toString("base64"),
+    //             },
+    //         },
+    //     ],
+    // });
 
-        const response = await generateContentWithFallback({
-    model: "gemini-2.5-flash",
-    contents: [
+    const response = await generateContentWithFallback({
+      model: "gemini-2.5-flash",
+      contents: [
         {
-            text: prompt,
+          text: prompt,
         },
         {
-            inlineData: {
-                mimeType,
-                data: req.file.buffer.toString("base64"),
-            },
+          inlineData: {
+            mimeType,
+            data: req.file.buffer.toString("base64"),
+          },
         },
-    ],
-});
+      ],
+    });
 
-        // 5. Safe JSON parsing (IMPORTANT)
-        let result;
+    // 5. Safe JSON parsing (IMPORTANT)
+    let result;
 
-        try {
-            result = JSON.parse(response.text);
-        } catch (err) {
-            console.error("Gemini returned invalid JSON:", response.text);
+    try {
+      result = JSON.parse(response.text);
+    } catch (err) {
+      console.error("Gemini returned invalid JSON:", response.text);
 
-            return res.status(500).json({
-                success: false,
-                message: "Invalid AI response format",
-            });
-        }
-
-        // 6. Final response
-        return res.status(200).json({
-            success: true,
-            firebase_uid: req.firebase_uid,
-            data: result,
-        });
-
-    } catch (error) {
-        console.error("Analyze Food Error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Food analysis failed",
-        });
+      return res.status(500).json({
+        success: false,
+        message: "Invalid AI response format",
+      });
     }
+
+    // 6. Final response
+    return res.status(200).json({
+      success: true,
+      firebase_uid: req.firebase_uid,
+      data: result,
+    });
+
+  } catch (error) {
+    console.error("Analyze Food Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Food analysis failed",
+    });
+  }
 };
 
 const recalculate_food = async (req, res) => {
@@ -487,9 +515,9 @@ Return format:
     // });
 
     const response = await generateContentWithFallback({
-  model: "gemini-2.5-flash",
-  contents: [{ text: prompt }],
-});
+      model: "gemini-2.5-flash",
+      contents: [{ text: prompt }],
+    });
     let text = response.text
       .replace(/```json/g, "")
       .replace(/```/g, "")
@@ -529,9 +557,9 @@ const saveMeal = async (req, res) => {
       total_carbs,
       total_fat,
     } = req.body;
-console.log("RAW BODY STRING =>", req.body);
-console.log("FOODS TYPE =>", Array.isArray(req.body.foods));
-console.log("FOODS =>", req.body.foods);
+    console.log("RAW BODY STRING =>", req.body);
+    console.log("FOODS TYPE =>", Array.isArray(req.body.foods));
+    console.log("FOODS =>", req.body.foods);
     const meal = await FOODLOGS.create({
       firebase_uid,
       foods,
@@ -695,5 +723,5 @@ const deleteMeal = async (req, res) => {
 };
 
 module.exports = {
-    add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal
+  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal
 };

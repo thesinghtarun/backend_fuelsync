@@ -13,6 +13,7 @@ const userSchema = new mongoose.Schema(
     height: { type: String, required: true }, // feet
     weight: { type: String, required: true }, // kg
     dob: { type: String, required: true },
+    activity:{type:String,required:true},
 
     firebase_uid: { type: String, required: true },
 
