@@ -722,6 +722,232 @@ const deleteMeal = async (req, res) => {
   }
 };
 
+//GET WEEKLY REPORT
+const getWeeklyReport = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+
+    const today = new Date();
+
+    // Start of week (Sunday)
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+
+    // End of week (Saturday)
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const meals = await FOODLOGS.find({
+      firebase_uid,
+      createdAt: {
+        $gte: weekStart,
+        $lte: weekEnd,
+      },
+    });
+
+    const user = await USERS.findOne({
+      firebase_uid,
+    });
+
+    const days = [
+      { day: "Sun", calories: 0, protein: 0, carbs: 0, fat: 0 },
+      { day: "Mon", calories: 0, protein: 0, carbs: 0, fat: 0 },
+      { day: "Tue", calories: 0, protein: 0, carbs: 0, fat: 0 },
+      { day: "Wed", calories: 0, protein: 0, carbs: 0, fat: 0 },
+      { day: "Thu", calories: 0, protein: 0, carbs: 0, fat: 0 },
+      { day: "Fri", calories: 0, protein: 0, carbs: 0, fat: 0 },
+      { day: "Sat", calories: 0, protein: 0, carbs: 0, fat: 0 },
+    ];
+
+    meals.forEach((meal) => {
+      const index = new Date(meal.createdAt).getDay();
+
+      days[index].calories += meal.total_calories || 0;
+      days[index].protein += meal.total_protein || 0;
+      days[index].carbs += meal.total_carbs || 0;
+      days[index].fat += meal.total_fat || 0;
+    });
+
+    return res.status(200).json({
+      success: true,
+      week_start: weekStart,
+      week_end: weekEnd,
+
+      targets: {
+        calories: user?.target_calories ?? 0,
+        protein: user?.protein_goal ?? 0,
+        carbs: user?.carbs_goal ?? 0,
+        fat: user?.fat_goal ?? 0,
+      },
+
+      days,
+    });
+  } catch (error) {
+    console.error("WEEKLY REPORT ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch weekly report",
+    });
+  }
+};
+
+//GET MONTHLY REPORT
+const getMonthlyReport = async (
+  req,
+  res
+) => {
+  try {
+    const firebase_uid =
+      req.firebase_uid;
+
+    const user =
+      await USERS.findOne({
+        firebase_uid,
+      });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const now = new Date();
+
+    const monthStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1
+    );
+
+    const monthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999
+    );
+
+    const meals =
+      await FOODLOGS.find({
+        firebase_uid,
+        createdAt: {
+          $gte: monthStart,
+          $lte: monthEnd,
+        },
+      });
+
+    const weeks = [
+      {
+        week: "W1",
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+      },
+      {
+        week: "W2",
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+      },
+      {
+        week: "W3",
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+      },
+      {
+        week: "W4",
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+      },
+      {
+        week: "W5",
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+      },
+    ];
+
+    meals.forEach((meal) => {
+      const dayOfMonth =
+        meal.createdAt.getDate();
+
+      const weekIndex = Math.floor(
+        (dayOfMonth - 1) / 7
+      );
+
+      if (
+        weekIndex >= 0 &&
+        weekIndex < weeks.length
+      ) {
+        weeks[
+          weekIndex
+        ].calories +=
+          meal.total_calories || 0;
+
+        weeks[
+          weekIndex
+        ].protein +=
+          meal.total_protein || 0;
+
+        weeks[
+          weekIndex
+        ].carbs +=
+          meal.total_carbs || 0;
+
+        weeks[
+          weekIndex
+        ].fat +=
+          meal.total_fat || 0;
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+
+      month: now.toLocaleString(
+        "en-US",
+        {
+          month: "long",
+          year: "numeric",
+        }
+      ),
+
+     targets: {
+  calories: user.target_calories * 7,
+  protein: user.protein_goal * 7,
+  carbs: user.carbs_goal * 7,
+  fat: user.fat_goal * 7,
+},
+
+      weeks,
+    });
+  } catch (error) {
+    console.error(
+      "MONTHLY REPORT ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Failed to fetch monthly report",
+    });
+  }
+};
+
 module.exports = {
-  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal
+  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport
 };

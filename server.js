@@ -16,7 +16,9 @@ const {
   saveMeal,
   getTodayConsumption,
   updateGoal,
-  deleteMeal
+  deleteMeal,
+  getWeeklyReport,
+  getMonthlyReport
 } = require("./controller/app_controller");
 
 const app = express();
@@ -81,6 +83,18 @@ app.delete(
 app.get(
   "/fuelsync/food/today",
   getTodayConsumption
+);
+
+//GET WEEKLY REPORT
+app.get(
+  "/fuelsync/reports/weekly",
+  getWeeklyReport
+);
+
+//GET MONTHLY REPORT
+app.get(
+  "/fuelsync/reports/monthly",
+  getMonthlyReport
 );
 
 
