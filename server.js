@@ -18,7 +18,8 @@ const {
   updateGoal,
   deleteMeal,
   getWeeklyReport,
-  getMonthlyReport
+  getMonthlyReport,
+  searchFood
 } = require("./controller/app_controller");
 
 const app = express();
@@ -95,6 +96,12 @@ app.get(
 app.get(
   "/fuelsync/reports/monthly",
   getMonthlyReport
+);
+
+//SERACH FOOD
+app.post(
+  "/fuelsync/food/search",
+  searchFood
 );
 
 

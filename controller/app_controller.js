@@ -1,43 +1,52 @@
 const USERS = require("../models/users.model");
 const { fileTypeFromBuffer } = require("file-type");
 const admin = require("../config/firebase");
-const { GoogleGenAI } = require("@google/genai");
+// const { GoogleGenAI } = require("@google/genai");
+const { generateContentWithFallback } = require("../utils/gemini");
 const FOODLOGS = require("../models/food_logs.model");
+const { calculateNutrition, getOrCreateFoodData, parseGeminiJson } = require("../utils/food_helper");
+const FOODDATA = require("../models/food_data.model");
 
 
-async function generateContentWithFallback(config) {
-  const keys = [
-    process.env.GEMINI_API_KEY,
-    process.env.GEMINI_API_KEY_ALTERNATE,
-  ].filter(Boolean);
 
-  let lastError;
+// async function generateContentWithFallback(config) {
+//   const keys = [
+//     process.env.GEMINI_API_KEY,
+//     process.env.GEMINI_API_KEY_ALTERNATE,
+//   ].filter(Boolean);
 
-  for (const key of keys) {
-    try {
-      const ai = new GoogleGenAI({ apiKey: key });
+//   let lastError;
 
-      return await ai.models.generateContent(config);
-    } catch (error) {
-      lastError = error;
+//   for (const key of keys) {
+//     try {
+//       const ai = new GoogleGenAI({ apiKey: key });
 
-      // Try next key only for quota/rate-limit errors
-      if (error.status !== 429) {
-        throw error;
-      }
+//       return await ai.models.generateContent(config);
+//     } catch (error) {
+//       lastError = error;
 
-      console.log(
-        `Quota exceeded for key. Trying next key...`
-      );
-    }
-  }
+//       // Try next key only for quota/rate-limit errors
+//       if ([429, 503].includes(error.status)) {
+//         console.log(
+//           `Gemini error ${error.status}. Trying next key...`
+//         );
+//         continue;
+//       }
 
-  throw lastError;
-}
+//       throw error;
+
+//       console.log(
+//         `Quota exceeded for key. Trying next key...`
+//       );
+//     }
+//   }
+
+//   throw lastError;
+// }
 
 
 // const ai = new GoogleGenAI({
-//     apiKey: process.env.GEMINI_API_KEY,
+//   apiKey: process.env.GEMINI_API_KEY,
 // });
 
 const add_user = async (req, res) => {
@@ -346,131 +355,326 @@ const login = async (req, res) => {
 
 
 //To analyze the food
-const analyze_food = async (req, res) => {
-  try {
-    // 1. Check image exists
-    if (!req.file) {
-      console.log("BODY:", req.body);
-      console.log("FILE:", req.file);
+// const analyze_food = async (req, res) => {
+//   try {
+//     // 1. Check image exists
+//     if (!req.file) {
+//       console.log("BODY:", req.body);
+//       console.log("FILE:", req.file);
 
+//       return res.status(400).json({
+//         success: false,
+//         message: "Image is required",
+//       });
+//     }
+
+//     // 2. Detect real image type from buffer (MOST IMPORTANT FIX)
+//     const type = await fileTypeFromBuffer(req.file.buffer);
+
+//     const mimeType = type?.mime || req.file.mimetype || "image/jpeg";
+
+//     // 3. Prompt
+//     const prompt = `
+// Analyze this food image carefully.
+
+// IMPORTANT:
+// - A coin is present in the image and MUST be used as the primary scale reference.
+// - First, detect the coin and assume a standard diameter based on a common Indian coin (typically 2 cm to 2.5 cm range). If coin type is unclear, assume 2.2 cm as default.
+// - Use the coin to estimate real-world dimensions (cm) of all visible food items.
+// - Convert estimated dimensions → volume → weight (grams) using realistic food density.
+
+// INDIAN FOOD ACCURACY RULES:
+// - Use standard Indian serving sizes and recipes as reference (roti, rice, dal, sabzi, curry, paneer dishes, biryani, street food, etc.).
+// - Consider oil/ghee usage, gravy density, and typical home-style or restaurant-style portions.
+// - For roti/chapati: estimate based on diameter and thickness.
+// - For rice: assume cooked basmati/normal Indian rice density.
+// - For curries/dal: include gravy + solid ingredients weight.
+// - For fried/snack items: account for oil absorption.
+
+// GENERAL RULES:
+// - Be as precise as possible in gram estimation using visual scaling.
+// - Break down multiple items separately (do not merge foods).
+// - Do NOT ignore small components like chutney, oil, salad, or garnish.
+// - If uncertain, choose the closest realistic Indian household portion size rather than guessing randomly.
+
+// Return ONLY raw JSON.
+// Do NOT include markdown, explanation, or backticks.
+
+// Return format:
+// {
+//   "foods": [
+//     {
+//       "name": "",
+//       "quantity_grams": 0,
+//       "calories": 0,
+//       "protein": 0,
+//       "carbs": 0,
+//       "fat": 0
+//     }
+//   ],
+//   "total_calories": 0,
+//   "total_protein": 0,
+//   "total_carbs": 0,
+//   "total_fat": 0
+// }
+// `;
+
+//     // 4. Gemini call
+//     // const response = await ai.models.generateContent({
+//     //     model: "gemini-2.5-flash",
+//     //     contents: [
+//     //         {
+//     //             text: prompt,
+//     //         },
+//     //         {
+//     //             inlineData: {
+//     //                 mimeType,
+//     //                 data: req.file.buffer.toString("base64"),
+//     //             },
+//     //         },
+//     //     ],
+//     // });
+
+//     const response = await generateContentWithFallback({
+//       model: "gemini-2.5-flash",
+//       contents: [
+//         {
+//           text: prompt,
+//         },
+//         {
+//           inlineData: {
+//             mimeType,
+//             data: req.file.buffer.toString("base64"),
+//           },
+//         },
+//       ],
+//     });
+
+//     // 5. Safe JSON parsing (IMPORTANT)
+//     let result;
+
+//     try {
+//       result = JSON.parse(response.text);
+//     } catch (err) {
+//       console.error("Gemini returned invalid JSON:", response.text);
+
+//       return res.status(500).json({
+//         success: false,
+//         message: "Invalid AI response format",
+//       });
+//     }
+
+//     // 6. Final response
+//     return res.status(200).json({
+//       success: true,
+//       firebase_uid: req.firebase_uid,
+//       data: result,
+//     });
+
+//   } catch (error) {
+//     console.error("Analyze Food Error:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Food analysis failed",
+//     });
+//   }
+// };
+
+
+const analyze_food = async (
+  req,
+  res
+) => {
+  try {
+    if (!req.file) {
       return res.status(400).json({
         success: false,
         message: "Image is required",
       });
     }
 
-    // 2. Detect real image type from buffer (MOST IMPORTANT FIX)
-    const type = await fileTypeFromBuffer(req.file.buffer);
+    const type =
+      await fileTypeFromBuffer(
+        req.file.buffer
+      );
 
-    const mimeType = type?.mime || req.file.mimetype || "image/jpeg";
+    const mimeType =
+      type?.mime ||
+      req.file.mimetype ||
+      "image/jpeg";
 
-    // 3. Prompt
     const prompt = `
 Analyze this food image carefully.
 
+TASK:
+1. Identify all visible food items.
+2. Estimate quantity in grams.
+
 IMPORTANT:
-- A coin is present in the image and MUST be used as the primary scale reference.
-- First, detect the coin and assume a standard diameter based on a common Indian coin (typically 2 cm to 2.5 cm range). If coin type is unclear, assume 2.2 cm as default.
-- Use the coin to estimate real-world dimensions (cm) of all visible food items.
-- Convert estimated dimensions → volume → weight (grams) using realistic food density.
+- A coin may be present and should be used as scale reference.
+- If coin type is unclear assume 2.2 cm diameter.
+- Break multiple foods separately.
+- Use realistic Indian food serving sizes.
+- Return normalized common food names.
+- Include confidence score.
 
-INDIAN FOOD ACCURACY RULES:
-- Use standard Indian serving sizes and recipes as reference (roti, rice, dal, sabzi, curry, paneer dishes, biryani, street food, etc.).
-- Consider oil/ghee usage, gravy density, and typical home-style or restaurant-style portions.
-- For roti/chapati: estimate based on diameter and thickness.
-- For rice: assume cooked basmati/normal Indian rice density.
-- For curries/dal: include gravy + solid ingredients weight.
-- For fried/snack items: account for oil absorption.
+Examples:
+Chapati -> roti
+Phulka -> roti
+Curd -> yogurt
+Dahi -> yogurt
 
-GENERAL RULES:
-- Be as precise as possible in gram estimation using visual scaling.
-- Break down multiple items separately (do not merge foods).
-- Do NOT ignore small components like chutney, oil, salad, or garnish.
-- If uncertain, choose the closest realistic Indian household portion size rather than guessing randomly.
+Return ONLY JSON.
 
-Return ONLY raw JSON.
-Do NOT include markdown, explanation, or backticks.
-
-Return format:
 {
   "foods": [
     {
       "name": "",
       "quantity_grams": 0,
-      "calories": 0,
-      "protein": 0,
-      "carbs": 0,
-      "fat": 0
+      "confidence": 0.95
     }
-  ],
-  "total_calories": 0,
-  "total_protein": 0,
-  "total_carbs": 0,
-  "total_fat": 0
+  ]
 }
 `;
 
-    // 4. Gemini call
-    // const response = await ai.models.generateContent({
-    //     model: "gemini-2.5-flash",
-    //     contents: [
-    //         {
-    //             text: prompt,
-    //         },
-    //         {
-    //             inlineData: {
-    //                 mimeType,
-    //                 data: req.file.buffer.toString("base64"),
-    //             },
-    //         },
-    //     ],
-    // });
-
-    const response = await generateContentWithFallback({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          text: prompt,
-        },
-        {
-          inlineData: {
-            mimeType,
-            data: req.file.buffer.toString("base64"),
+    const response =
+      await generateContentWithFallback({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            text: prompt,
           },
-        },
-      ],
-    });
+          {
+            inlineData: {
+              mimeType,
+              data: req.file.buffer.toString(
+                "base64"
+              ),
+            },
+          },
+        ],
+      });
 
-    // 5. Safe JSON parsing (IMPORTANT)
-    let result;
+    let geminiResult;
 
     try {
-      result = JSON.parse(response.text);
+      geminiResult =
+        parseGeminiJson(
+          response.text
+        );
     } catch (err) {
-      console.error("Gemini returned invalid JSON:", response.text);
+      console.error(
+        "Invalid Gemini JSON:",
+        response.text
+      );
 
       return res.status(500).json({
         success: false,
-        message: "Invalid AI response format",
+        message:
+          "Invalid AI response format",
       });
     }
 
-    // 6. Final response
+    if (
+      !geminiResult.foods ||
+      !Array.isArray(
+        geminiResult.foods
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Unable to detect food",
+      });
+    }
+
+    const foods = [];
+
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
+
+    for (const detectedFood of geminiResult.foods) {
+      if (
+        detectedFood.confidence &&
+        detectedFood.confidence < 0.5
+      ) {
+        continue;
+      }
+
+      const quantity = Number(
+        detectedFood.quantity_grams ||
+        0
+      );
+
+      const foodData =
+        await getOrCreateFoodData(
+          detectedFood.name
+        );
+
+      const nutrition =
+        calculateNutrition(
+          foodData,
+          quantity
+        );
+
+      foods.push({
+        name: foodData.food_name,
+        quantity_grams: quantity,
+        calories:
+          nutrition.calories,
+        protein:
+          nutrition.protein,
+        carbs: nutrition.carbs,
+        fat: nutrition.fat,
+      });
+
+      totalCalories +=
+        nutrition.calories;
+      totalProtein +=
+        nutrition.protein;
+      totalCarbs += nutrition.carbs;
+      totalFat += nutrition.fat;
+    }
+
+    const finalResult = {
+      foods,
+      total_calories: Number(
+        totalCalories.toFixed(1)
+      ),
+      total_protein: Number(
+        totalProtein.toFixed(1)
+      ),
+      total_carbs: Number(
+        totalCarbs.toFixed(1)
+      ),
+      total_fat: Number(
+        totalFat.toFixed(1)
+      ),
+    };
+
     return res.status(200).json({
       success: true,
-      firebase_uid: req.firebase_uid,
-      data: result,
+      firebase_uid:
+        req.firebase_uid,
+      data: finalResult,
     });
-
   } catch (error) {
-    console.error("Analyze Food Error:", error);
+    console.error(
+      "Analyze Food Error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Food analysis failed",
+      message:
+        "Food analysis failed",
     });
   }
 };
+
 
 const recalculate_food = async (req, res) => {
   try {
@@ -925,12 +1129,12 @@ const getMonthlyReport = async (
         }
       ),
 
-     targets: {
-  calories: user.target_calories * 7,
-  protein: user.protein_goal * 7,
-  carbs: user.carbs_goal * 7,
-  fat: user.fat_goal * 7,
-},
+      targets: {
+        calories: user.target_calories * 7,
+        protein: user.protein_goal * 7,
+        carbs: user.carbs_goal * 7,
+        fat: user.fat_goal * 7,
+      },
 
       weeks,
     });
@@ -948,6 +1152,68 @@ const getMonthlyReport = async (
   }
 };
 
+//SEARCH FOOD
+const searchFood = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      food_name,
+      quantity,
+    } = req.body;
+
+    if (
+      !food_name ||
+      !quantity
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "food_name and quantity required",
+      });
+    }
+
+    const food =
+      await getOrCreateFoodData(
+        food_name
+      );
+
+    const nutrition =
+      calculateNutrition(
+        food,
+        Number(quantity)
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        food_name:
+          food.food_name,
+        quantity:
+          Number(quantity),
+
+        calories:
+          nutrition.calories,
+
+        protein:
+          nutrition.protein,
+
+        carbs:
+          nutrition.carbs,
+
+        fat: nutrition.fat,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message,
+    });
+  }
+};
+
 module.exports = {
-  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport
+  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood
 };
