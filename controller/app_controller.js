@@ -193,7 +193,7 @@ const add_user = async (req, res) => {
     goal.toLowerCase().trim()
     ) {
       case "lose":
-      case "lose weight":
+      case "loose weight":
       case "weight loss":
         targetCalories =
           maintenanceCalories - 500;
