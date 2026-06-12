@@ -4,7 +4,7 @@ const admin = require("../config/firebase");
 // const { GoogleGenAI } = require("@google/genai");
 const { generateContentWithFallback } = require("../utils/gemini");
 const FOODLOGS = require("../models/food_logs.model");
-const { calculateNutrition, getOrCreateFoodData, parseGeminiJson } = require("../utils/food_helper");
+const { calculateNutrition, getOrCreateFoodDataFromUSDA, parseGeminiJson, getOrCreateFoodDataFromGemini } = require("../utils/food_helper");
 const FOODDATA = require("../models/food_data.model");
 
 
@@ -610,9 +610,11 @@ Return ONLY JSON.
       );
 
       const foodData =
-        await getOrCreateFoodData(
+        await getOrCreateFoodDataFromGemini(
           detectedFood.name
         );
+
+        
 
       const nutrition =
         calculateNutrition(
@@ -1175,7 +1177,7 @@ const searchFood = async (
     }
 
     const food =
-      await getOrCreateFoodData(
+      await getOrCreateFoodDataFromUSDA(
         food_name
       );
 

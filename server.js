@@ -39,7 +39,7 @@ mongoose
   .catch((err) =>
     console.log(chalk.red(`MongoDB Connection Error: ${err}`))
   );
-
+  
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
