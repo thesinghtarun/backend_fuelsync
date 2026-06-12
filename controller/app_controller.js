@@ -1214,6 +1214,52 @@ const searchFood = async (
   }
 };
 
+//DEDUCT CREDITS
+const deductCredit = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+    const { reduceCredit } = req.body;
+
+    const user = await USERS.findOneAndUpdate(
+      { firebase_uid },
+      { $inc: { credits: -reduceCredit } },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      credits: user.credits,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
+
+//GET CREDITS TO REDUCE
+const creditsCost = async (req, res) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      credits_to_reduce: 2, // change this anytime from backend
+    });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
+
 module.exports = {
-  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood
+  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, deductCredit, creditsCost
 };

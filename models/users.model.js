@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema(
     height: { type: String, required: true }, // feet
     weight: { type: String, required: true }, // kg
     dob: { type: String, required: true },
-    activity:{type:String,required:true},
+    activity: { type: String, required: true },
 
     firebase_uid: { type: String, required: true },
 
@@ -31,10 +31,9 @@ const userSchema = new mongoose.Schema(
 
     fat_goal: { type: Number, default: 0 },
 
-    is_subscribed: {
-      type: Boolean,
-      default: false,
-    },
+    is_subscribed: { type: Boolean, default: false },
+
+    credits: { type: Number, default: 30 }
   },
   {
     timestamps: true,

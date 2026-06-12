@@ -19,7 +19,9 @@ const {
   deleteMeal,
   getWeeklyReport,
   getMonthlyReport,
-  searchFood
+  searchFood,
+  deductCredit,
+  creditsCost
 } = require("./controller/app_controller");
 
 const app = express();
@@ -103,6 +105,12 @@ app.post(
   "/fuelsync/food/search",
   searchFood
 );
+
+//DEDUCT CREDIT
+app.post("/fuelsync/credits/deduct",deductCredit);
+
+//CREDITS COST
+app.get("/fuelsync/credits/cost", creditsCost);
 
 
 app.listen(port, () => {
