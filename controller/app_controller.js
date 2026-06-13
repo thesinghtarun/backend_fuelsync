@@ -766,6 +766,44 @@ const saveMeal = async (req, res) => {
     console.log("RAW BODY STRING =>", req.body);
     console.log("FOODS TYPE =>", Array.isArray(req.body.foods));
     console.log("FOODS =>", req.body.foods);
+
+    if (foods && Array.isArray(foods)) {
+      for (const f of foods) {
+        const normalizedName = String(f.food_name || "").toLowerCase().trim();
+        if (!normalizedName) continue;
+
+        try {
+          const existing = await FOODDATA.findOne({ food_name: normalizedName });
+          if (!existing) {
+            const quantityGrams = Number(f.quantity_grams || 100);
+            const ratio = quantityGrams > 0 ? (100 / quantityGrams) : 1;
+            const caloriesPer100g = Number(((f.calories || 0) * ratio).toFixed(1));
+            const proteinPer100g = Number(((f.protein || 0) * ratio).toFixed(1));
+            const carbsPer100g = Number(((f.carbs || 0) * ratio).toFixed(1));
+            const fatsPer100g = Number(((f.fat || 0) * ratio).toFixed(1));
+
+            await FOODDATA.findOneAndUpdate(
+              { food_name: normalizedName },
+              {
+                $setOnInsert: {
+                  food_name: normalizedName,
+                  quantity: 100,
+                  calories: caloriesPer100g,
+                  protein: proteinPer100g,
+                  carbs: carbsPer100g,
+                  fats: fatsPer100g,
+                }
+              },
+              { upsert: true }
+            );
+            console.log(`Saved new food item per 100g to fooddata: ${normalizedName}`);
+          }
+        } catch (err) {
+          console.error(`Failed to check/save food item "${normalizedName}":`, err.message);
+        }
+      }
+    }
+
     const meal = await FOODLOGS.create({
       firebase_uid,
       foods,
@@ -1176,11 +1214,19 @@ const searchFood = async (
       });
     }
 
-    const food =
+        const food =
       await getOrCreateFoodDataFromUSDA(
         food_name
       );
 
+    if (!food) {
+      return res.status(404).json({
+        success: false,
+        message: "Food not found",
+      });
+    }
+
+    console.log(`FOOD SEARCH: ${food}`);
     const nutrition =
       calculateNutrition(
         food,

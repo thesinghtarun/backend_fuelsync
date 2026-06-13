@@ -87,19 +87,15 @@ const getOrCreateFoodDataFromUSDA = async (
         return food;
     }
 
-   const nutrition =
-  await searchFoodFromUSDA(
-    normalizedName
-  );
+    try {
+        const nutrition = await searchFoodFromUSDA(normalizedName);
 
-if (!nutrition) {
-  throw new Error(
-    "Food not found"
-  );
-}
+        if (!nutrition) {
+            console.log(`Food "${normalizedName}" not found in USDA.`);
+            return null;
+        }
 
-    food =
-        await FOODDATA.findOneAndUpdate(
+        food = await FOODDATA.findOneAndUpdate(
             {
                 food_name: normalizedName,
             },
@@ -107,14 +103,10 @@ if (!nutrition) {
                 $setOnInsert: {
                     food_name: normalizedName,
                     quantity: 100,
-                    calories:
-                        nutrition.calories || 0,
-                    protein:
-                        nutrition.protein || 0,
-                    carbs:
-                        nutrition.carbs || 0,
-                    fats:
-                        nutrition.fats || 0,
+                    calories: nutrition.calories || 0,
+                    protein: nutrition.protein || 0,
+                    carbs: nutrition.carbs || 0,
+                    fats: nutrition.fats || 0,
                 },
             },
             {
@@ -123,7 +115,11 @@ if (!nutrition) {
             }
         );
 
-    return food;
+        return food;
+    } catch (error) {
+        console.error(`USDA search failed for "${normalizedName}":`, error.message);
+        return null;
+    }
 };
 
 

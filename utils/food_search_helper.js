@@ -7,6 +7,7 @@ const searchFoodFromUSDA = async (
     await axios.get(
       "https://api.nal.usda.gov/fdc/v1/foods/search",
       {
+        family:4,
         params: {
           query: foodName,
           pageSize: 1,
@@ -15,6 +16,8 @@ const searchFoodFromUSDA = async (
         },
       }
     );
+
+    console.log(`FOOD SEARCH: ${response}`);
 
   const food =
     response.data.foods?.[0];
@@ -32,6 +35,8 @@ const searchFoodFromUSDA = async (
         n.nutrientId === id
     )?.value || 0;
 
+    
+    
   return {
     food_name: foodName
       .toLowerCase()
