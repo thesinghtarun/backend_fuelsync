@@ -21,6 +21,7 @@ const {
   getWeeklyReport,
   getMonthlyReport,
   searchFood,
+  scanFood,
   deductCredit,
   creditsCost
 } = require("./controller/app_controller");
@@ -101,10 +102,16 @@ app.get(
   getMonthlyReport
 );
 
-//SERACH FOOD
+//SEARCH FOOD
 app.post(
   "/fuelsync/food/search",
   searchFood
+);
+
+//SCAN FOOD (Barcode)
+app.post(
+  "/fuelsync/food/scan",
+  scanFood
 );
 
 //DEDUCT CREDIT

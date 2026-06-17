@@ -5,6 +5,7 @@ const admin = require("../config/firebase");
 const { generateContentWithFallback } = require("../utils/gemini");
 const FOODLOGS = require("../models/food_logs.model");
 const { calculateNutrition, getOrCreateFoodDataFromUSDA, parseGeminiJson, getOrCreateFoodDataFromGemini } = require("../utils/food_helper");
+const { searchFoodByBarcode } = require("../utils/barcode_helper");
 const FOODDATA = require("../models/food_data.model");
 
 
@@ -1262,6 +1263,73 @@ const searchFood = async (
   }
 };
 
+//SCAN FOOD (Barcode)
+const scanFood = async (req, res) => {
+  try {
+    const { barcode, quantity } = req.body;
+
+    if (!barcode || !quantity) {
+      return res.status(400).json({
+        success: false,
+        message: "barcode and quantity are required",
+      });
+    }
+
+    const quantityGrams = Number(quantity);
+
+    if (isNaN(quantityGrams) || quantityGrams <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "quantity must be a positive number (in grams)",
+      });
+    }
+
+    const product = await searchFoodByBarcode(barcode);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found for this barcode",
+      });
+    }
+
+    // Scale nutrition from per-100g to user's quantity
+    const ratio = quantityGrams / 100;
+
+    const scaledNutrition = {
+      calories: Number((product.per_100g.calories * ratio).toFixed(1)),
+      protein: Number((product.per_100g.protein * ratio).toFixed(1)),
+      carbs: Number((product.per_100g.carbs * ratio).toFixed(1)),
+      fat: Number((product.per_100g.fat * ratio).toFixed(1)),
+      fiber: Number((product.per_100g.fiber * ratio).toFixed(1)),
+      sugar: Number((product.per_100g.sugar * ratio).toFixed(1)),
+      sodium: Number((product.per_100g.sodium * ratio).toFixed(1)),
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        product_name: product.product_name,
+        brand: product.brand,
+        image_url: product.image_url,
+        pack_size: product.pack_size,
+        serving_size: product.serving_size,
+        barcode: barcode,
+        quantity_grams: quantityGrams,
+        nutrition: scaledNutrition,
+        per_100g: product.per_100g,
+      },
+    });
+  } catch (error) {
+    console.error("SCAN FOOD ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Barcode scan failed",
+    });
+  }
+};
+
 //DEDUCT CREDITS
 const deductCredit = async (req, res) => {
   try {
@@ -1309,5 +1377,5 @@ const creditsCost = async (req, res) => {
 };
 
 module.exports = {
-  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, deductCredit, creditsCost
+  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, creditsCost
 };
