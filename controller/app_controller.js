@@ -7,6 +7,10 @@ const FOODLOGS = require("../models/food_logs.model");
 const { calculateNutrition, getOrCreateFoodDataFromUSDA, parseGeminiJson, getOrCreateFoodDataFromGemini } = require("../utils/food_helper");
 const { searchFoodByBarcode } = require("../utils/barcode_helper");
 const FOODDATA = require("../models/food_data.model");
+const Razorpay = require("razorpay");
+const crypto = require("crypto");
+const { razorpay } = require("../config/razor_pay");
+
 
 
 
@@ -615,7 +619,7 @@ Return ONLY JSON.
           detectedFood.name
         );
 
-        
+
 
       const nutrition =
         calculateNutrition(
@@ -1215,7 +1219,7 @@ const searchFood = async (
       });
     }
 
-        const food =
+    const food =
       await getOrCreateFoodDataFromUSDA(
         food_name
       );
@@ -1376,6 +1380,254 @@ const creditsCost = async (req, res) => {
   }
 };
 
+//GET PLANS
+const getPlans =
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      return res
+        .status(200)
+        .json({
+
+          success: true,
+
+          plans: [
+
+            {
+              id: "base",
+              title:
+                "Base Plan",
+              description: "",
+              amount: 49,
+              credits: 50
+            },
+
+            {
+              id: "elite",
+              title:
+                "Elite Plan",
+              description: "",
+              amount: 99,
+              credits: 100
+            },
+
+            {
+              id: "developer",
+              title:
+                "Help Developer",
+              description: "",
+              amount: 499,
+              credits: 150
+            }
+
+          ]
+
+        });
+
+    }
+    catch (e) {
+
+      return res
+        .status(500)
+        .json({
+          success: false
+        });
+
+    }
+
+  };
+
+
+//RAZOR PAY--------------------------------------------------------------------------
+
+// CREATE ORDER
+const createOrder =
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+      console.log("BODY =>", req.body);
+      console.log("UID =>", req.firebase_uid);
+      const {
+        amount,
+        credits
+      }
+        =
+        req.body;
+
+      if (
+        !amount ||
+        !credits
+      ) {
+
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "amount and credits required"
+          });
+
+      }
+
+      const order =
+        await razorpay.orders.create({
+
+          amount:
+            Number(amount) * 100,
+
+          currency:
+            "INR",
+
+          receipt:
+            `credit_${Date.now()}`,
+
+          notes: {
+            credits: String(credits)
+          }
+
+        });
+      console.log("ORDER =>", order);
+      return res
+        .status(200)
+        .json({
+          success: true,
+          order
+        });
+
+    }
+
+    catch (e) {
+      console.log("RAZORPAY ERROR =>", e);
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message:
+            e.message
+        });
+
+    }
+
+  };
+
+
+
+// VERIFY PAYMENT
+const verifyPayment =
+async (req, res) => {
+  try {
+
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature
+    } = req.body;
+
+    console.log("VERIFY BODY =>", req.body);
+
+    // Verify signature
+    const body =
+      `${razorpay_order_id}|${razorpay_payment_id}`;
+
+    const expected =
+      crypto
+        .createHmac(
+          "sha256",
+          process.env.RAZORPAY_SECRET_KEY
+        )
+        .update(body)
+        .digest("hex");
+
+    if (expected !== razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment"
+      });
+    }
+
+    // Fetch payment
+    const payment =
+      await razorpay.payments.fetch(
+        razorpay_payment_id
+      );
+
+    console.log("PAYMENT =>", payment);
+
+    // Fetch order to get notes
+    const order =
+      await razorpay.orders.fetch(
+        razorpay_order_id
+      );
+
+    console.log("ORDER =>", order);
+
+    const credits =
+      Number(
+        order.notes?.credits
+      );
+
+    console.log("CREDITS =>", credits);
+
+    if (isNaN(credits)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid credits"
+      });
+    }
+
+    const user =
+      await USERS.findOne({
+        firebase_uid:
+          req.firebase_uid
+      });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    user.credits =
+      (user.credits || 0)
+      + credits;
+
+    await user.save();
+
+    console.log(
+      "UPDATED USER =>",
+      user
+    );
+
+    return res.status(200).json({
+      success: true,
+      credits:
+        user.credits
+    });
+
+  } catch (e) {
+
+    console.log(
+      "VERIFY ERROR =>",
+      e
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        e.message
+    });
+
+  }
+};
+
 module.exports = {
-  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, creditsCost
+  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, creditsCost, getPlans, createOrder, verifyPayment
 };

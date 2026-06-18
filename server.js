@@ -9,6 +9,7 @@ const cors = require("cors");
 const verifyFirebaseToken = require("./middleware/auth_middleware");
 const upload = require("./middleware/upload_middleware");
 
+
 const {
   add_user,
   login,
@@ -23,7 +24,10 @@ const {
   searchFood,
   scanFood,
   deductCredit,
-  creditsCost
+  creditsCost,
+  getPlans,
+  createOrder,
+  verifyPayment
 } = require("./controller/app_controller");
 
 const app = express();
@@ -41,13 +45,8 @@ mongoose
   .catch((err) =>
     console.log(chalk.red(`MongoDB Connection Error: ${err}`))
   );
-  
-app.get("/", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "FuelSync Backend Running",
-  });
-});
+
+app.get("/", (req, res) => { res.status(200).json({ success: true, message: "FuelSync Backend Running", }); });
 
 /*
   Public Routes
@@ -60,65 +59,49 @@ app.post("/fuelsync/login", login);
 */
 app.use(verifyFirebaseToken);
 
-app.post("/fuelsync/food/analyze",
-  upload.single("image"),
-  analyze_food);
+app.post("/fuelsync/food/analyze", upload.single("image"), analyze_food);
 
 app.post("/fuelsync/food/recalculate", recalculate_food);
 
 // SAVE MEAL
-app.post(
-  "/fuelsync/food/save",
-  saveMeal
-);
+app.post("/fuelsync/food/save", saveMeal);
 
 //UPDATE GOAL
-app.put(
-  "/fuelsync/user/goal",
-  updateGoal
-);
+app.put("/fuelsync/user/goal", updateGoal);
 
 //DELETE MEAL
-app.delete(
-  "/fuelsync/food/:meal_id",
-  deleteMeal
-);
+app.delete("/fuelsync/food/:meal_id", deleteMeal);
 
 // GET TODAY CONSUMPTION
-app.get(
-  "/fuelsync/food/today",
-  getTodayConsumption
-);
+app.get("/fuelsync/food/today", getTodayConsumption);
 
 //GET WEEKLY REPORT
-app.get(
-  "/fuelsync/reports/weekly",
-  getWeeklyReport
-);
+app.get("/fuelsync/reports/weekly", getWeeklyReport);
 
 //GET MONTHLY REPORT
-app.get(
-  "/fuelsync/reports/monthly",
-  getMonthlyReport
-);
+app.get("/fuelsync/reports/monthly", getMonthlyReport);
 
 //SEARCH FOOD
-app.post(
-  "/fuelsync/food/search",
-  searchFood
-);
+app.post("/fuelsync/food/search", searchFood);
 
 //SCAN FOOD (Barcode)
-app.post(
-  "/fuelsync/food/scan",
-  scanFood
-);
+app.post("/fuelsync/food/scan", scanFood);
 
-//DEDUCT CREDIT
-app.post("/fuelsync/credits/deduct",deductCredit);
+//GET PLANS
+app.get("/fuelsync/credits/price", getPlans);
 
 //CREDITS COST
 app.get("/fuelsync/credits/cost", creditsCost);
+
+//DEDUCT CREDIT
+app.post("/fuelsync/credits/deduct", deductCredit);
+
+// CREATE PAYMENT ORDER
+app.post("/fuelsync/payment/order",createOrder);
+
+// VERIFY PAYMENT
+app.post("/fuelsync/payment/verify",verifyPayment);
+
 
 
 app.listen(port, () => {
