@@ -10,6 +10,7 @@ const FOODDATA = require("../models/food_data.model");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
 const { razorpay } = require("../config/razor_pay");
+const { uploadToCloudinary } = require("../utils/cloudinary");
 
 
 
@@ -509,6 +510,20 @@ const analyze_food = async (
       req.file.mimetype ||
       "image/jpeg";
 
+    // Async upload to Cloudinary (safely fall back to "" if it fails/unconfigured)
+    let image_url = "";
+    try {
+      const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+      if (cloudName && cloudName.trim()) {
+        image_url = await uploadToCloudinary(req.file.buffer);
+        console.log("Uploaded image to Cloudinary successfully:", image_url);
+      } else {
+        console.warn("Cloudinary not configured in .env. Skipping upload.");
+      }
+    } catch (uploadError) {
+      console.error("Cloudinary upload failed inside analyze_food:", uploadError.message);
+    }
+
     const prompt = `
 Analyze this food image carefully.
 
@@ -667,6 +682,7 @@ Return ONLY JSON.
       firebase_uid:
         req.firebase_uid,
       data: finalResult,
+      image_url: image_url,
     });
   } catch (error) {
     console.error(
@@ -767,6 +783,7 @@ const saveMeal = async (req, res) => {
       total_protein,
       total_carbs,
       total_fat,
+      image_url,
     } = req.body;
     console.log("RAW BODY STRING =>", req.body);
     console.log("FOODS TYPE =>", Array.isArray(req.body.foods));
@@ -816,6 +833,7 @@ const saveMeal = async (req, res) => {
       total_protein,
       total_carbs,
       total_fat,
+      image_url: image_url || "",
     });
 
     return res.status(201).json({

@@ -12,6 +12,7 @@
     "@google/genai": "^2.8.0",
     "axios": "^1.17.0",
     "chalk": "^3.0.0",
+    "cloudinary": "^2.10.0",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
     "dotenv": "^17.4.2",

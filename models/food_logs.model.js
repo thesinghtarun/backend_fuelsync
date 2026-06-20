@@ -73,6 +73,11 @@ const mealSchema = new mongoose.Schema(
             required: true,
             default: 0,
         },
+
+        image_url: {
+            type: String,
+            default: "",
+        },
     },
     {
         timestamps: true,
