@@ -1,5 +1,6 @@
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
+require("./cron/delete_daily_activity");
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -12,6 +13,7 @@ const upload = require("./middleware/upload_middleware");
 
 const {
   add_user,
+  remove_user,
   login,
   analyze_food,
   recalculate_food,
@@ -27,7 +29,11 @@ const {
   creditsCost,
   getPlans,
   createOrder,
-  verifyPayment
+  verifyPayment,
+  getActivities,
+  addActivity,
+  getUserActivities,
+  deleteActivity
 } = require("./controller/app_controller");
 
 const app = express();
@@ -58,6 +64,8 @@ app.post("/fuelsync/login", login);
   All routes below this line require Firebase token
 */
 app.use(verifyFirebaseToken);
+
+app.post("/fuelsync/remove/user", remove_user);
 
 app.post("/fuelsync/food/analyze", upload.single("image"), analyze_food);
 
@@ -97,10 +105,23 @@ app.get("/fuelsync/credits/cost", creditsCost);
 app.post("/fuelsync/credits/deduct", deductCredit);
 
 // CREATE PAYMENT ORDER
-app.post("/fuelsync/payment/order",createOrder);
+app.post("/fuelsync/payment/order", createOrder);
 
 // VERIFY PAYMENT
-app.post("/fuelsync/payment/verify",verifyPayment);
+app.post("/fuelsync/payment/verify", verifyPayment);
+
+//GET ACTIVITIES
+app.get("/fuelsync/get/activities", getActivities);
+
+//ADD ACTIVITIES
+app.post("/fuelsync/post/activities", addActivity);
+
+//GET USER ACTIVITIES
+app.get("/fuelsync/get/user/activities", getUserActivities);
+
+//DELETE ACTIVITY
+app.delete("/fuelsync/delete/activity/:activityId", deleteActivity);
+
 
 
 

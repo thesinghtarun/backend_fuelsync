@@ -11,6 +11,8 @@ const Razorpay = require("razorpay");
 const crypto = require("crypto");
 const { razorpay } = require("../config/razor_pay");
 const { uploadToCloudinary } = require("../utils/cloudinary");
+const ACTIVITY = require("../models/activity_model");
+const activities=require("../data/activities");
 
 
 
@@ -131,7 +133,7 @@ const add_user = async (req, res) => {
     // HEIGHT FT -> CM
     // -----------------------------
     const heightCm =
-      parseFloat(height) * 30.48;
+      parseFloat(height);
 
     const weightKg =
       parseFloat(weight);
@@ -198,7 +200,7 @@ const add_user = async (req, res) => {
     switch (
     goal.toLowerCase().trim()
     ) {
-      case "lose":
+      case "loose":
       case "loose weight":
       case "weight loss":
         targetCalories =
@@ -232,7 +234,7 @@ const add_user = async (req, res) => {
 
     if (
       goal.toLowerCase().includes(
-        "lose"
+        "loose"
       )
     ) {
       proteinGoal = Math.round(
@@ -323,6 +325,74 @@ const add_user = async (req, res) => {
   }
 };
 
+
+const remove_user = async (req, res) => {
+  try {
+    const { email, firebase_uid } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email required",
+      });
+    }
+
+    if (!firebase_uid) {
+      return res.status(400).json({
+        success: false,
+        message: "Firebase UID required",
+      });
+    }
+
+    console.log(`Account to delete: ${email} ${firebase_uid}`);
+
+    // Delete user from MongoDB
+    const deletedUser =
+      await USERS.findOneAndDelete({
+        email,
+        firebase_uid,
+      });
+
+    if (!deletedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Delete from Firebase Auth
+    try {
+      await admin.auth().deleteUser(
+        firebase_uid
+      );
+    } catch (firebaseError) {
+      console.error(
+        "Firebase delete failed:",
+        firebaseError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "User removed from database but failed in Firebase",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "User deleted successfully",
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Internal Server Error",
+    });
+  }
+};
 
 
 const login = async (req, res) => {
@@ -1539,113 +1609,361 @@ const createOrder =
 
 // VERIFY PAYMENT
 const verifyPayment =
-async (req, res) => {
-  try {
+  async (req, res) => {
+    try {
+
+      const {
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature
+      } = req.body;
+
+      console.log("VERIFY BODY =>", req.body);
+
+      // Verify signature
+      const body =
+        `${razorpay_order_id}|${razorpay_payment_id}`;
+
+      const expected =
+        crypto
+          .createHmac(
+            "sha256",
+            process.env.RAZORPAY_SECRET_KEY
+          )
+          .update(body)
+          .digest("hex");
+
+      if (expected !== razorpay_signature) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment"
+        });
+      }
+
+      // Fetch payment
+      const payment =
+        await razorpay.payments.fetch(
+          razorpay_payment_id
+        );
+
+      console.log("PAYMENT =>", payment);
+
+      // Fetch order to get notes
+      const order =
+        await razorpay.orders.fetch(
+          razorpay_order_id
+        );
+
+      console.log("ORDER =>", order);
+
+      const credits =
+        Number(
+          order.notes?.credits
+        );
+
+      console.log("CREDITS =>", credits);
+
+      if (isNaN(credits)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid credits"
+        });
+      }
+
+      const user =
+        await USERS.findOne({
+          firebase_uid:
+            req.firebase_uid
+        });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      user.credits =
+        (user.credits || 0)
+        + credits;
+
+      await user.save();
+
+      console.log(
+        "UPDATED USER =>",
+        user
+      );
+
+      return res.status(200).json({
+        success: true,
+        credits:
+          user.credits
+      });
+
+    } catch (e) {
+
+      console.log(
+        "VERIFY ERROR =>",
+        e
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          e.message
+      });
+
+    }
+  };
+
+  //GET ACTIVITIES
+  const getActivities =
+  async (req, res) => {
+    try {
+      return res.status(200).json({
+        success: true,
+        count: activities.length,
+        data: activities,
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Internal Server Error",
+      });
+    }
+  };
+
+  //ADD ACTIVITY
+  const addActivity =
+  async (req, res) => {
+    try {
+    const firebase_uid =
+      req.user.uid; 
 
     const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature
+      activity_id,
+      duration,
     } = req.body;
 
-    console.log("VERIFY BODY =>", req.body);
+      if (
+        !firebase_uid ||
+        !activity_id ||
+        !duration
+      ) {
+        return res.status(400)
+          .json({
+            success: false,
+            message:
+              "All fields required",
+          });
+      }
 
-    // Verify signature
-    const body =
-      `${razorpay_order_id}|${razorpay_payment_id}`;
+      const selected =
+        activities.find(
+          (e) =>
+            e.id ===
+            activity_id
+        );
 
-    const expected =
-      crypto
-        .createHmac(
-          "sha256",
-          process.env.RAZORPAY_SECRET_KEY
-        )
-        .update(body)
-        .digest("hex");
+      if (!selected) {
+        return res.status(404)
+          .json({
+            success: false,
+            message:
+              "Activity not found",
+          });
+      }
 
-    if (expected !== razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment"
+      const calories =
+        Math.round(
+          (selected.caloriesPer10Min /
+              10) *
+              duration
+        );
+
+      const entry = {
+        activity_id,
+        activity_name:
+          selected.name,
+
+        duration,
+
+        calories_burned:
+          calories,
+
+        created_at:
+          new Date(),
+      };
+
+     const result =
+  await ACTIVITY.findOneAndUpdate(
+    {
+      firebase_uid,
+    },
+    {
+      $push: {
+        activities: entry,
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+    }
+  );
+
+// get last inserted activity
+const savedActivity =
+  result.activities[
+    result.activities.length - 1
+  ];
+
+return res.status(201).json({
+  success: true,
+  data: savedActivity,
+});
+      return res.status(201)
+        .json({
+          success: true,
+          data: entry,
+        });
+    } catch (e) {
+      console.log(e);
+
+      return res.status(500)
+        .json({
+          success: false,
+          message:
+            "Internal Server Error",
+        });
+    }
+  };
+
+  //GET USER ACTIVITIES
+//GET USER ACTIVITIES
+const getUserActivities = async (req, res) => {
+  try {
+    const firebase_uid = req.user.uid;
+
+    const userActivities = await ACTIVITY.findOne({
+      firebase_uid,
+    });
+
+    if (!userActivities) {
+      return res.status(200).json({
+        success: true,
+        data: [],
       });
     }
 
-    // Fetch payment
-    const payment =
-      await razorpay.payments.fetch(
-        razorpay_payment_id
-      );
-
-    console.log("PAYMENT =>", payment);
-
-    // Fetch order to get notes
-    const order =
-      await razorpay.orders.fetch(
-        razorpay_order_id
-      );
-
-    console.log("ORDER =>", order);
-
-    const credits =
-      Number(
-        order.notes?.credits
-      );
-
-    console.log("CREDITS =>", credits);
-
-    if (isNaN(credits)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid credits"
-      });
-    }
-
-    const user =
-      await USERS.findOne({
-        firebase_uid:
-          req.firebase_uid
-      });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    user.credits =
-      (user.credits || 0)
-      + credits;
-
-    await user.save();
-
-    console.log(
-      "UPDATED USER =>",
-      user
+    // newest first
+    const sortedActivities = [
+      ...userActivities.activities,
+    ].sort(
+      (a, b) =>
+        new Date(b.created_at) -
+        new Date(a.created_at),
     );
 
     return res.status(200).json({
       success: true,
-      credits:
-        user.credits
+      data: sortedActivities,
     });
-
   } catch (e) {
-
-    console.log(
-      "VERIFY ERROR =>",
-      e
-    );
+    console.log(e);
 
     return res.status(500).json({
       success: false,
-      message:
-        e.message
+      message: "Internal Server Error",
     });
+  }
+};
 
+  //DELETE ACTIVITY
+  const deleteActivity =
+async (req, res) => {
+  try {
+    const firebase_uid =
+      req.user.uid;
+
+    const {
+      activityId,
+    } = req.params;
+
+    if (!activityId) {
+      return res
+        .status(400)
+        .json({
+          success:
+              false,
+
+          message:
+              "Activity id required",
+        });
+    }
+
+    const updated =
+      await ACTIVITY.findOneAndUpdate(
+        {
+          firebase_uid,
+        },
+
+        {
+          $pull: {
+            activities: {
+              _id:
+                activityId,
+            },
+          },
+        },
+
+        {
+          new: true,
+        },
+      );
+
+    if (!updated) {
+      return res
+        .status(404)
+        .json({
+          success:
+              false,
+
+          message:
+              "Activity not found",
+        });
+    }
+
+    return res
+      .status(200)
+      .json({
+        success:
+            true,
+
+        message:
+            "Activity deleted",
+
+        data:
+            updated
+                .activities,
+      });
+  } catch (e) {
+    console.log(e);
+
+    return res
+      .status(500)
+      .json({
+        success:
+            false,
+
+        message:
+            "Internal Server Error",
+      });
   }
 };
 
 module.exports = {
-  add_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, creditsCost, getPlans, createOrder, verifyPayment
+  add_user, remove_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, creditsCost, getPlans, createOrder, verifyPayment, getActivities, addActivity, getUserActivities, deleteActivity
 };
