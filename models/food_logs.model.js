@@ -31,6 +31,11 @@ const foodSchema = new mongoose.Schema(
             type: Number,
             required: true,
         },
+
+        fiber: {
+            type: Number,
+            required: true,
+        },
     },
     {
         _id: false,
@@ -69,6 +74,12 @@ const mealSchema = new mongoose.Schema(
         },
 
         total_fat: {
+            type: Number,
+            required: true,
+            default: 0,
+        },
+
+        total_fiber: {
             type: Number,
             required: true,
             default: 0,

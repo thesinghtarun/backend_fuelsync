@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema(
 
     fat_goal: { type: Number, default: 0 },
 
+    fiber_goal: { type: Number, default: 0 },
+
+    calories_to_burn: { type: Number, default: 0 },
+
     is_subscribed: { type: Boolean, default: false },
 
     credits: { type: Number, default: 30 }

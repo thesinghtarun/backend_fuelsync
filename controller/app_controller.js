@@ -4,9 +4,9 @@ const admin = require("../config/firebase");
 // const { GoogleGenAI } = require("@google/genai");
 const { generateContentWithFallback } = require("../utils/gemini");
 const FOODLOGS = require("../models/food_logs.model");
-const { calculateNutrition, getOrCreateFoodDataFromUSDA, parseGeminiJson, getOrCreateFoodDataFromGemini } = require("../utils/food_helper");
+const { calculateNutrition, getOrCreateFoodDataFromOpenFoodFacts, parseGeminiJson, getOrCreateFoodDataFromGemini } = require("../utils/food_helper");
 const { searchFoodByBarcode } = require("../utils/barcode_helper");
-const FOODDATA = require("../models/food_data.model");
+
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
 const { razorpay } = require("../config/razor_pay");
@@ -268,6 +268,13 @@ const add_user = async (req, res) => {
     const carbsGoal =
       Math.round(carbCalories / 4);
 
+    const fiberGoal = Math.round((targetCalories / 1000) * 14);
+
+    let caloriesToBurn = 0;
+    if (goal.toLowerCase().includes("loose") || goal.toLowerCase().includes("loss")) {
+      caloriesToBurn = 500;
+    }
+
     // -----------------------------
     // CREATE USER
     // -----------------------------
@@ -306,6 +313,12 @@ const add_user = async (req, res) => {
 
         fat_goal:
           fatGoal,
+
+        fiber_goal:
+          fiberGoal,
+
+        calories_to_burn:
+          caloriesToBurn,
       });
 
     return res.status(201).json({
@@ -685,6 +698,7 @@ Return ONLY JSON.
     let totalProtein = 0;
     let totalCarbs = 0;
     let totalFat = 0;
+    let totalFiber = 0;
 
     for (const detectedFood of geminiResult.foods) {
       if (
@@ -721,14 +735,14 @@ Return ONLY JSON.
           nutrition.protein,
         carbs: nutrition.carbs,
         fat: nutrition.fat,
+        fiber: nutrition.fiber,
       });
 
-      totalCalories +=
-        nutrition.calories;
-      totalProtein +=
-        nutrition.protein;
+      totalCalories += nutrition.calories;
+      totalProtein += nutrition.protein;
       totalCarbs += nutrition.carbs;
       totalFat += nutrition.fat;
+      totalFiber += nutrition.fiber;
     }
 
     const finalResult = {
@@ -744,6 +758,9 @@ Return ONLY JSON.
       ),
       total_fat: Number(
         totalFat.toFixed(1)
+      ),
+      total_fiber: Number(
+        totalFiber.toFixed(1)
       ),
     };
 
@@ -802,7 +819,8 @@ Return format:
   "total_calories": 0,
   "total_protein": 0,
   "total_carbs": 0,
-  "total_fat": 0
+  "total_fat": 0,
+  "total_fiber": 0
 }
 `;
 
@@ -853,48 +871,12 @@ const saveMeal = async (req, res) => {
       total_protein,
       total_carbs,
       total_fat,
+      total_fiber,
       image_url,
     } = req.body;
     console.log("RAW BODY STRING =>", req.body);
     console.log("FOODS TYPE =>", Array.isArray(req.body.foods));
     console.log("FOODS =>", req.body.foods);
-
-    if (foods && Array.isArray(foods)) {
-      for (const f of foods) {
-        const normalizedName = String(f.food_name || "").toLowerCase().trim();
-        if (!normalizedName) continue;
-
-        try {
-          const existing = await FOODDATA.findOne({ food_name: normalizedName });
-          if (!existing) {
-            const quantityGrams = Number(f.quantity_grams || 100);
-            const ratio = quantityGrams > 0 ? (100 / quantityGrams) : 1;
-            const caloriesPer100g = Number(((f.calories || 0) * ratio).toFixed(1));
-            const proteinPer100g = Number(((f.protein || 0) * ratio).toFixed(1));
-            const carbsPer100g = Number(((f.carbs || 0) * ratio).toFixed(1));
-            const fatsPer100g = Number(((f.fat || 0) * ratio).toFixed(1));
-
-            await FOODDATA.findOneAndUpdate(
-              { food_name: normalizedName },
-              {
-                $setOnInsert: {
-                  food_name: normalizedName,
-                  quantity: 100,
-                  calories: caloriesPer100g,
-                  protein: proteinPer100g,
-                  carbs: carbsPer100g,
-                  fats: fatsPer100g,
-                }
-              },
-              { upsert: true }
-            );
-            console.log(`Saved new food item per 100g to fooddata: ${normalizedName}`);
-          }
-        } catch (err) {
-          console.error(`Failed to check/save food item "${normalizedName}":`, err.message);
-        }
-      }
-    }
 
     const meal = await FOODLOGS.create({
       firebase_uid,
@@ -903,6 +885,7 @@ const saveMeal = async (req, res) => {
       total_protein,
       total_carbs,
       total_fat,
+      total_fiber,
       image_url: image_url || "",
     });
 
@@ -948,12 +931,14 @@ const getTodayConsumption = async (req, res) => {
     let totalProtein = 0;
     let totalCarbs = 0;
     let totalFat = 0;
+    let totalFiber = 0;
 
     meals.forEach((meal) => {
       totalCalories += meal.total_calories || 0;
       totalProtein += meal.total_protein || 0;
       totalCarbs += meal.total_carbs || 0;
       totalFat += meal.total_fat || 0;
+      totalFiber += meal.total_fiber || 0;
     });
 
     return res.status(200).json({
@@ -962,6 +947,7 @@ const getTodayConsumption = async (req, res) => {
       total_protein: totalProtein,
       total_carbs: totalCarbs,
       total_fat: totalFat,
+      total_fiber: totalFiber,
       meals,
     });
   } catch (error) {
@@ -984,6 +970,7 @@ const updateGoal = async (req, res) => {
       protein_goal,
       carbs_goal,
       fat_goal,
+      fiber_goal,
     } = req.body;
 
     const user = await USERS.findOneAndUpdate(
@@ -1000,6 +987,9 @@ const updateGoal = async (req, res) => {
         }),
         ...(fat_goal != null && {
           fat_goal: Number(fat_goal),
+        }),
+        ...(fiber_goal != null && {
+          fiber_goal: Number(fiber_goal),
         }),
       },
       { new: true }
@@ -1089,13 +1079,13 @@ const getWeeklyReport = async (req, res) => {
     });
 
     const days = [
-      { day: "Sun", calories: 0, protein: 0, carbs: 0, fat: 0 },
-      { day: "Mon", calories: 0, protein: 0, carbs: 0, fat: 0 },
-      { day: "Tue", calories: 0, protein: 0, carbs: 0, fat: 0 },
-      { day: "Wed", calories: 0, protein: 0, carbs: 0, fat: 0 },
-      { day: "Thu", calories: 0, protein: 0, carbs: 0, fat: 0 },
-      { day: "Fri", calories: 0, protein: 0, carbs: 0, fat: 0 },
-      { day: "Sat", calories: 0, protein: 0, carbs: 0, fat: 0 },
+      { day: "Sun", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      { day: "Mon", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      { day: "Tue", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      { day: "Wed", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      { day: "Thu", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      { day: "Fri", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      { day: "Sat", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
     ];
 
     meals.forEach((meal) => {
@@ -1105,6 +1095,7 @@ const getWeeklyReport = async (req, res) => {
       days[index].protein += meal.total_protein || 0;
       days[index].carbs += meal.total_carbs || 0;
       days[index].fat += meal.total_fat || 0;
+      days[index].fiber += meal.total_fiber || 0;
     });
 
     return res.status(200).json({
@@ -1117,6 +1108,7 @@ const getWeeklyReport = async (req, res) => {
         protein: user?.protein_goal ?? 0,
         carbs: user?.carbs_goal ?? 0,
         fat: user?.fat_goal ?? 0,
+        fiber: user?.fiber_goal ?? 0,
       },
 
       days,
@@ -1179,41 +1171,46 @@ const getMonthlyReport = async (
         },
       });
 
-    const weeks = [
+    const monthlySummary = [
       {
-        week: "W1",
+        week: "Week 1 (1-7)",
         calories: 0,
         protein: 0,
         carbs: 0,
         fat: 0,
+        fiber: 0,
       },
       {
-        week: "W2",
+        week: "Week 2 (8-14)",
         calories: 0,
         protein: 0,
         carbs: 0,
         fat: 0,
+        fiber: 0,
       },
       {
-        week: "W3",
+        week: "Week 3 (15-21)",
         calories: 0,
         protein: 0,
         carbs: 0,
         fat: 0,
+        fiber: 0,
       },
       {
-        week: "W4",
+        week: "Week 4 (22-28)",
         calories: 0,
         protein: 0,
         carbs: 0,
         fat: 0,
+        fiber: 0,
       },
       {
-        week: "W5",
+        week: "Week 5 (29-31)",
         calories: 0,
         protein: 0,
         carbs: 0,
         fat: 0,
+        fiber: 0,
       },
     ];
 
@@ -1227,27 +1224,28 @@ const getMonthlyReport = async (
 
       if (
         weekIndex >= 0 &&
-        weekIndex < weeks.length
+        weekIndex < monthlySummary.length
       ) {
-        weeks[
+        monthlySummary[
           weekIndex
         ].calories +=
           meal.total_calories || 0;
 
-        weeks[
+        monthlySummary[
           weekIndex
         ].protein +=
           meal.total_protein || 0;
 
-        weeks[
+        monthlySummary[
           weekIndex
         ].carbs +=
           meal.total_carbs || 0;
 
-        weeks[
+        monthlySummary[
           weekIndex
         ].fat +=
           meal.total_fat || 0;
+        monthlySummary[weekIndex].fiber += meal.total_fiber || 0;
       }
     });
 
@@ -1267,9 +1265,10 @@ const getMonthlyReport = async (
         protein: user.protein_goal * 7,
         carbs: user.carbs_goal * 7,
         fat: user.fat_goal * 7,
+        fiber: user.fiber_goal * 7,
       },
 
-      weeks,
+      weeks: monthlySummary,
     });
   } catch (error) {
     console.error(
@@ -1308,7 +1307,7 @@ const searchFood = async (
     }
 
     const food =
-      await getOrCreateFoodDataFromUSDA(
+      await getOrCreateFoodDataFromOpenFoodFacts(
         food_name
       );
 
@@ -1344,6 +1343,7 @@ const searchFood = async (
           nutrition.carbs,
 
         fat: nutrition.fat,
+        fiber: nutrition.fiber,
       },
     });
   } catch (error) {

@@ -1,7 +1,7 @@
 const cron = require("node-cron");
 const ACTIVITY = require("../models/activity_model");
 
-// Every day at 12:01 AM
+// Every day at 12:01 AM IST
 cron.schedule("1 0 * * *", async () => {
   try {
     const result = await ACTIVITY.deleteMany({});
@@ -15,4 +15,6 @@ cron.schedule("1 0 * * *", async () => {
       e,
     );
   }
+}, {
+  timezone: "Asia/Kolkata"
 });

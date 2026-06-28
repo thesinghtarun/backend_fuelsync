@@ -1,4 +1,3 @@
-const FOODDATA = require("../models/food_data.model");
 const { generateContentWithFallback } = require("./gemini");
 const axios = require("axios");
 
@@ -20,59 +19,43 @@ const parseGeminiJson = (text) => {
     }
 };
 
-const calculateNutrition = (
-    foodData,
-    quantityGrams
-) => {
+const calculateNutrition = (foodData, quantityGrams) => {
     const ratio = quantityGrams / 100;
 
     return {
-        calories: Number(
-            (foodData.calories * ratio).toFixed(1)
-        ),
-        protein: Number(
-            (foodData.protein * ratio).toFixed(1)
-        ),
-        carbs: Number(
-            (foodData.carbs * ratio).toFixed(1)
-        ),
-        fat: Number(
-            (foodData.fats * ratio).toFixed(1)
-        ),
+        calories: Number((foodData.calories * ratio).toFixed(1)),
+        protein:  Number((foodData.protein  * ratio).toFixed(1)),
+        carbs:    Number((foodData.carbs    * ratio).toFixed(1)),
+        fat:      Number(((foodData.fats || foodData.fat || 0) * ratio).toFixed(1)),
+        fiber:    Number((foodData.fiber    * ratio).toFixed(1)),
     };
 };
 
-const getNutritionFor100g = async (
-    foodName
-) => {
-    const response =
-        await generateContentWithFallback({
-            model: "gemini-2.5-flash",
-            contents: [
-                {
-                    text: `
-Provide average nutritional values per 100 grams of "${foodName}".
-
-Use USDA/FSSAI standard references where possible.
-
-Return ONLY JSON.
-
+// ── Gemini fallback ────────────────────────────────────────────────────────────
+const getNutritionFor100g = async (foodName) => {
+    const response = await generateContentWithFallback({
+        model: "gemini-2.5-flash",
+        contents: [
+            {
+                text: `Provide average nutritional values per 100 grams of "${foodName}".
+Return ONLY valid JSON — no markdown, no explanation.
 {
   "food_name":"${foodName}",
   "quantity":100,
   "calories":0,
   "protein":0,
   "carbs":0,
-  "fats":0
-}
-`,
-                },
-            ],
-        });
+  "fats":0,
+  "fiber":0
+}`,
+            },
+        ],
+    });
 
     return parseGeminiJson(response.text);
 };
 
+// ── OpenFoodFacts search ───────────────────────────────────────────────────────
 const searchFoodFromOpenFoodFacts = async (foodName) => {
     try {
         const response = await axios.get(
@@ -84,41 +67,45 @@ const searchFoodFromOpenFoodFacts = async (foodName) => {
                     action: "process",
                     json: 1,
                     page_size: 5,
-                    fields: "product_name,brands,nutriments,quantity,serving_size"
+                    fields: "product_name,brands,nutriments,quantity,serving_size",
                 },
                 timeout: 10000,
             }
         );
+
         const products = response.data.products || [];
         if (!products.length) {
-            console.log(`No Open Food Facts results found for "${foodName}"`);
+            console.log(`No Open Food Facts results for "${foodName}"`);
             return null;
         }
 
-        // Find the first product that has nutrition values
         const matchedProduct = products.find(
-            (p) => p.nutriments && (p.nutriments["energy-kcal_100g"] !== undefined || p.nutriments["energy_100g"] !== undefined)
+            (p) =>
+                p.nutriments &&
+                (p.nutriments["energy-kcal_100g"] !== undefined ||
+                    p.nutriments["energy_100g"] !== undefined)
         );
+
         if (!matchedProduct) {
-            console.log(`No product with nutrition found in Open Food Facts for "${foodName}"`);
+            console.log(`No product with nutrition in Open Food Facts for "${foodName}"`);
             return null;
         }
 
-        const nutriments = matchedProduct.nutriments;
-        const caloriesPer100g = nutriments["energy-kcal_100g"] || (nutriments["energy_100g"] ? nutriments["energy_100g"] / 4.184 : 0);
-        const proteinPer100g = nutriments["proteins_100g"] || 0;
-        const carbsPer100g = nutriments["carbohydrates_100g"] || 0;
-        const fatPer100g = nutriments["fat_100g"] || 0;
+        const n = matchedProduct.nutriments;
+        const caloriesPer100g =
+            n["energy-kcal_100g"] ||
+            (n["energy_100g"] ? n["energy_100g"] / 4.184 : 0);
 
-        console.log(`Open Food Facts match found: "${matchedProduct.product_name}" for query "${foodName}"`);
+        console.log(`Open Food Facts match: "${matchedProduct.product_name}" for "${foodName}"`);
 
         return {
             food_name: foodName.toLowerCase().trim(),
-            quantity: 100,
-            calories: Number(caloriesPer100g.toFixed(1)),
-            protein: Number(proteinPer100g.toFixed(1)),
-            carbs: Number(carbsPer100g.toFixed(1)),
-            fats: Number(fatPer100g.toFixed(1)),
+            quantity:  100,
+            calories:  Number(caloriesPer100g.toFixed(1)),
+            protein:   Number((n["proteins_100g"]       || 0).toFixed(1)),
+            carbs:     Number((n["carbohydrates_100g"]   || 0).toFixed(1)),
+            fats:      Number((n["fat_100g"]             || 0).toFixed(1)),
+            fiber:     Number((n["fiber_100g"]           || 0).toFixed(1)),
         };
     } catch (error) {
         console.error(`Open Food Facts search failed for "${foodName}":`, error.message);
@@ -126,143 +113,62 @@ const searchFoodFromOpenFoodFacts = async (foodName) => {
     }
 };
 
-const getOrCreateFoodDataFromUSDA = async (
-    foodName
-) => {
-    const normalizedName =
-        normalizeFoodName(foodName);
+// ── Main resolver: OpenFoodFacts → Gemini fallback (no DB cache) ───────────────
+const getFoodNutrition = async (foodName) => {
+    const normalizedName = normalizeFoodName(foodName);
 
-    let food = await FOODDATA.findOne({
-        food_name: normalizedName,
-    });
+    // 1. Try OpenFoodFacts
+    let nutrition = await searchFoodFromOpenFoodFacts(normalizedName);
 
-    if (food) {
-        return food;
+    // 2. Fall back to Gemini
+    if (!nutrition) {
+        console.log(`"${normalizedName}" not in OpenFoodFacts — using Gemini...`);
+        const gemini = await getNutritionFor100g(normalizedName);
+        if (gemini) {
+            nutrition = {
+                food_name: normalizedName,
+                quantity:  100,
+                calories:  gemini.calories || 0,
+                protein:   gemini.protein  || 0,
+                carbs:     gemini.carbs    || 0,
+                fats:      gemini.fats     || 0,
+                fiber:     gemini.fiber    || 0,
+            };
+        }
     }
 
-    try {
-        // Query Open Food Facts directly instead of USDA
-        let nutrition = await searchFoodFromOpenFoodFacts(normalizedName);
-
-        // Fallback to Gemini if Open Food Facts search fails
-        if (!nutrition) {
-            console.log(`Food "${normalizedName}" not found in Open Food Facts. Falling back to Gemini...`);
-            const geminiNutrient = await getNutritionFor100g(normalizedName);
-            if (geminiNutrient) {
-                nutrition = {
-                    food_name: normalizedName,
-                    calories: geminiNutrient.calories || 0,
-                    protein: geminiNutrient.protein || 0,
-                    carbs: geminiNutrient.carbs || 0,
-                    fats: geminiNutrient.fats || 0,
-                };
-            }
-        }
-
-        if (!nutrition) {
-            console.log(`Food "${normalizedName}" could not be resolved from any source.`);
-            return null;
-        }
-
-        food = await FOODDATA.findOneAndUpdate(
-            {
-                food_name: normalizedName,
-            },
-            {
-                $setOnInsert: {
-                    food_name: normalizedName,
-                    quantity: 100,
-                    calories: nutrition.calories || 0,
-                    protein: nutrition.protein || 0,
-                    carbs: nutrition.carbs || 0,
-                    fats: nutrition.fats || 0,
-                },
-            },
-            {
-                upsert: true,
-                new: true,
-            }
-        );
-
-        return food;
-    } catch (error) {
-        console.error(`Food lookup failed for "${normalizedName}":`, error.message);
+    if (!nutrition) {
+        console.log(`Could not resolve nutrition for "${normalizedName}"`);
         return null;
     }
+
+    return nutrition;
 };
 
-
-// const getNutritionFor100g = async (
-//   foodName
-// ) => {
-//   const response =
-//     await generateContentWithFallback({
-//       model: "gemini-2.5-flash",
-//       contents: [
-//         {
-//           text: `
-// Provide average nutrition values per 100 grams for "${foodName}".
-
-// Return ONLY JSON.
-
-// {
-//   "food_name":"${foodName}",
-//   "quantity":100,
-//   "calories":0,
-//   "protein":0,
-//   "carbs":0,
-//   "fats":0
-// }
-// `,
-//         },
-//       ],
-//     });
-
-//   return parseGeminiJson(
-//     response.text
-//   );
-// };
-
-const getOrCreateFoodDataFromGemini =
-  async (foodName) => {
-    const normalizedName =
-      normalizeFoodName(foodName);
-
-    let food =
-      await FOODDATA.findOne({
+// Keep old name as an alias so existing call-sites in app_controller still work
+const getOrCreateFoodDataFromOpenFoodFacts = getFoodNutrition;
+// Gemini-only path (still used by analyze_food)
+const getOrCreateFoodDataFromGemini = async (foodName) => {
+    const normalizedName = normalizeFoodName(foodName);
+    const gemini = await getNutritionFor100g(normalizedName);
+    if (!gemini) return null;
+    return {
         food_name: normalizedName,
-      });
-
-    if (food) {
-      return food;
-    }
-
-    const nutrition =
-      await getNutritionFor100g(
-        normalizedName
-      );
-
-    food =
-      await FOODDATA.create({
-        food_name: normalizedName,
-        quantity: 100,
-        calories:
-          nutrition.calories || 0,
-        protein:
-          nutrition.protein || 0,
-        carbs:
-          nutrition.carbs || 0,
-        fats:
-          nutrition.fats || 0,
-      });
-
-    return food;
-  };
-
+        quantity:  100,
+        calories:  gemini.calories || 0,
+        protein:   gemini.protein  || 0,
+        carbs:     gemini.carbs    || 0,
+        fats:      gemini.fats     || 0,
+        fiber:     gemini.fiber    || 0,
+    };
+};
 
 module.exports = {
     parseGeminiJson,
     calculateNutrition,
-    getOrCreateFoodDataFromUSDA,
-    getOrCreateFoodDataFromGemini
+    searchFoodFromOpenFoodFacts,
+    getNutritionFor100g,
+    getFoodNutrition,
+    getOrCreateFoodDataFromOpenFoodFacts,
+    getOrCreateFoodDataFromGemini,
 };
