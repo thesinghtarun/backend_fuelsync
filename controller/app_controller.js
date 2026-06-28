@@ -318,7 +318,7 @@ const add_user = async (req, res) => {
           fiberGoal,
 
         calories_to_burn:
-          caloriesToBurn,
+          (targetCalories)+(caloriesToBurn),
       });
 
     return res.status(201).json({
@@ -971,6 +971,7 @@ const updateGoal = async (req, res) => {
       carbs_goal,
       fat_goal,
       fiber_goal,
+      calories_to_burn
     } = req.body;
 
     const user = await USERS.findOneAndUpdate(
@@ -990,6 +991,9 @@ const updateGoal = async (req, res) => {
         }),
         ...(fiber_goal != null && {
           fiber_goal: Number(fiber_goal),
+        }),
+         ...(calories_to_burn != null && {
+          calories_to_burn: Number(calories_to_burn),
         }),
       },
       { new: true }
