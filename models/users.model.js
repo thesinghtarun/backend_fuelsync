@@ -37,7 +37,7 @@ const userSchema = new mongoose.Schema(
 
     is_subscribed: { type: Boolean, default: false },
 
-    credits: { type: Number, default: 30 }
+    credits: { type: Number, default: 10 }
   },
   {
     timestamps: true,
