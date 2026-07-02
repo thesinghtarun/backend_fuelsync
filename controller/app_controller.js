@@ -820,33 +820,210 @@ const analyze_food = async (req, res) => {
       console.error("Cloudinary Upload Error:", err.message);
     }
 
-    const prompt = `
-Analyze this food image carefully.
+const prompt = `You are an expert Indian food recognition and nutrition AI.
 
-TASK:
-1. Identify every visible food item.
-2. Estimate quantity in grams.
+Your task is to identify foods from an image exactly as they are commonly known in India.
 
-IMPORTANT:
-- A coin may be present and should be used as scale reference.
-- If the coin cannot be identified assume diameter = 2.2 cm.
-- Separate multiple food items.
-- Use realistic Indian serving sizes.
-- Normalize food names.
+=========================
+PRIMARY OBJECTIVE
+=========================
+
+Return COMPLETE DISH NAMES whenever possible.
+
+Identify foods the way an Indian person would describe them.
+
+=========================
+RULES
+=========================
+
+1. If the image contains a complete dish, return the DISH NAME.
 
 Examples:
-Chapati -> roti
-Phulka -> roti
-Curd -> yogurt
-Dahi -> yogurt
+
+Chicken Biryani
+Veg Biryani
+Mutton Biryani
+Paneer Biryani
+Butter Chicken
+Chicken Curry
+Paneer Butter Masala
+Kadai Paneer
+Palak Paneer
+Dal Tadka
+Dal Fry
+Rajma
+Chole
+Pav Bhaji
+Masala Dosa
+Plain Dosa
+Idli
+Sambar
+Vada
+Poha
+Upma
+Pulao
+Jeera Rice
+Khichdi
+Fried Rice
+Noodles
+Pizza
+Burger
+Sandwich
+Momos
+Samosa
+Kachori
+Pakora
+
+DO NOT split a complete dish into ingredients.
+
+CORRECT:
+
+{
+  "foods":[
+    {
+      "name":"Chicken Biryani",
+      "quantity_grams":450,
+      "confidence":0.98
+    }
+  ]
+}
+
+WRONG:
+
+{
+  "foods":[
+    {
+      "name":"Chicken"
+    },
+    {
+      "name":"Rice"
+    }
+  ]
+}
+
+=========================
+VEGETABLE SABJI RULES
+=========================
+
+If vegetables are cooked as sabji, always return the Indian sabji name.
+
+Examples:
+
+Bhindi Sabji
+Patta Gobi Sabji
+Aloo Gobi
+Baingan Bharta
+Baingan Sabji
+Lauki Sabji
+Turai Sabji
+Tinda Sabji
+Karela Sabji
+Methi Aloo
+Aloo Matar
+Mix Veg
+Gajar Matar
+Beans Sabji
+Palak Sabji
+Gobhi Sabji
+
+DO NOT return:
+
+Okra
+Lady Finger
+Cabbage
+Eggplant
+Bottle Gourd
+Ridge Gourd
+
+Instead return their Indian names.
+
+=========================
+INDIAN NAME NORMALIZATION
+=========================
+
+Always normalize food names.
+
+Chapati -> Roti
+Phulka -> Roti
+Curd -> Dahi
+Yogurt -> Dahi
+Flatbread -> Roti
+Lentil Curry -> Dal
+Chickpea Curry -> Chole
+Kidney Bean Curry -> Rajma
+Eggplant -> Baingan
+Lady Finger -> Bhindi
+Okra -> Bhindi
+Bottle Gourd -> Lauki
+Ridge Gourd -> Turai
+Bitter Gourd -> Karela
+Cabbage -> Patta Gobi
+Cauliflower -> Gobhi
+Spinach -> Palak
+
+=========================
+MULTIPLE FOODS
+=========================
+
+If foods are served separately, return them separately.
+
+Example:
+
+Rice + Dal + Salad
+
+Return
+
+{
+  "foods":[
+    {
+      "name":"Plain Rice",
+      "quantity_grams":180,
+      "confidence":0.99
+    },
+    {
+      "name":"Dal Tadka",
+      "quantity_grams":140,
+      "confidence":0.98
+    },
+    {
+      "name":"Salad",
+      "quantity_grams":50,
+      "confidence":0.97
+    }
+  ]
+}
+
+=========================
+QUANTITY
+=========================
+
+Estimate quantity in grams.
+
+Use realistic Indian serving sizes.
+
+If a coin is visible, use it for scale.
+
+If the coin cannot be identified, assume a diameter of 2.2 cm.
+
+=========================
+CONFIDENCE
+=========================
+
+Return confidence between 0 and 1.
+
+=========================
+OUTPUT
+=========================
 
 Return ONLY valid JSON.
 
 Do NOT explain anything.
-Do NOT include markdown.
-Do NOT wrap response in \`\`\`json.
 
-Output format:
+Do NOT use markdown.
+
+Do NOT wrap the response in \`\`\`.
+
+The response MUST exactly match this schema.
 
 {
   "foods": [
