@@ -1,6 +1,9 @@
 const USERS = require("../models/users.model");
 const { fileTypeFromBuffer } = require("file-type");
 const admin = require("../config/firebase");
+
+const axios = require("axios");
+
 // const { GoogleGenAI } = require("@google/genai");
 const { generateContentWithFallback } = require("../utils/gemini");
 const FOODLOGS = require("../models/food_logs.model");
@@ -571,10 +574,221 @@ const login = async (req, res) => {
 // };
 
 
-const analyze_food = async (
-  req,
-  res
-) => {
+// const analyze_food = async (
+//   req,
+//   res
+// ) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Image is required",
+//       });
+//     }
+
+//     const type =
+//       await fileTypeFromBuffer(
+//         req.file.buffer
+//       );
+
+//     const mimeType =
+//       type?.mime ||
+//       req.file.mimetype ||
+//       "image/jpeg";
+
+//     // Async upload to Cloudinary (safely fall back to "" if it fails/unconfigured)
+//     let image_url = "";
+//     try {
+//       const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+//       if (cloudName && cloudName.trim()) {
+//         image_url = await uploadToCloudinary(req.file.buffer);
+//         console.log("Uploaded image to Cloudinary successfully:", image_url);
+//       } else {
+//         console.warn("Cloudinary not configured in .env. Skipping upload.");
+//       }
+//     } catch (uploadError) {
+//       console.error("Cloudinary upload failed inside analyze_food:", uploadError.message);
+//     }
+
+//     const prompt = `
+// Analyze this food image carefully.
+
+// TASK:
+// 1. Identify all visible food items.
+// 2. Estimate quantity in grams.
+
+// IMPORTANT:
+// - A coin may be present and should be used as scale reference.
+// - If coin type is unclear assume 2.2 cm diameter.
+// - Break multiple foods separately.
+// - Use realistic Indian food serving sizes.
+// - Return normalized common food names.
+// - Include confidence score.
+
+// Examples:
+// Chapati -> roti
+// Phulka -> roti
+// Curd -> yogurt
+// Dahi -> yogurt
+
+// Return ONLY JSON.
+
+// {
+//   "foods": [
+//     {
+//       "name": "",
+//       "quantity_grams": 0,
+//       "confidence": 0.95
+//     }
+//   ]
+// }
+// `;
+
+//     const response =
+//       await generateContentWithFallback({
+//         model: "gemini-2.5-flash",
+//         contents: [
+//           {
+//             text: prompt,
+//           },
+//           {
+//             inlineData: {
+//               mimeType,
+//               data: req.file.buffer.toString(
+//                 "base64"
+//               ),
+//             },
+//           },
+//         ],
+//       });
+
+//     let geminiResult;
+
+//     try {
+//       geminiResult =
+//         parseGeminiJson(
+//           response.text
+//         );
+//     } catch (err) {
+//       console.error(
+//         "Invalid Gemini JSON:",
+//         response.text
+//       );
+
+//       return res.status(500).json({
+//         success: false,
+//         message:
+//           "Invalid AI response format",
+//       });
+//     }
+
+//     if (
+//       !geminiResult.foods ||
+//       !Array.isArray(
+//         geminiResult.foods
+//       )
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Unable to detect food",
+//       });
+//     }
+
+//     const foods = [];
+
+//     let totalCalories = 0;
+//     let totalProtein = 0;
+//     let totalCarbs = 0;
+//     let totalFat = 0;
+//     let totalFiber = 0;
+
+//     for (const detectedFood of geminiResult.foods) {
+//       if (
+//         detectedFood.confidence &&
+//         detectedFood.confidence < 0.5
+//       ) {
+//         continue;
+//       }
+
+//       const quantity = Number(
+//         detectedFood.quantity_grams ||
+//         0
+//       );
+
+//       const foodData =
+//         await getOrCreateFoodDataFromGemini(
+//           detectedFood.name
+//         );
+
+
+
+//       const nutrition =
+//         calculateNutrition(
+//           foodData,
+//           quantity
+//         );
+
+//       foods.push({
+//         name: foodData.food_name,
+//         quantity_grams: quantity,
+//         calories:
+//           nutrition.calories,
+//         protein:
+//           nutrition.protein,
+//         carbs: nutrition.carbs,
+//         fat: nutrition.fat,
+//         fiber: nutrition.fiber,
+//       });
+
+//       totalCalories += nutrition.calories;
+//       totalProtein += nutrition.protein;
+//       totalCarbs += nutrition.carbs;
+//       totalFat += nutrition.fat;
+//       totalFiber += nutrition.fiber;
+//     }
+
+//     const finalResult = {
+//       foods,
+//       total_calories: Number(
+//         totalCalories.toFixed(1)
+//       ),
+//       total_protein: Number(
+//         totalProtein.toFixed(1)
+//       ),
+//       total_carbs: Number(
+//         totalCarbs.toFixed(1)
+//       ),
+//       total_fat: Number(
+//         totalFat.toFixed(1)
+//       ),
+//       total_fiber: Number(
+//         totalFiber.toFixed(1)
+//       ),
+//     };
+
+//     return res.status(200).json({
+//       success: true,
+//       firebase_uid:
+//         req.firebase_uid,
+//       data: finalResult,
+//       image_url: image_url,
+//     });
+//   } catch (error) {
+//     console.error(
+//       "Analyze Food Error:",
+//       error
+//     );
+
+//     return res.status(500).json({
+//       success: false,
+//       message:
+//         "Food analysis failed",
+//     });
+//   }
+// };
+
+const analyze_food = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -583,44 +797,42 @@ const analyze_food = async (
       });
     }
 
-    const type =
-      await fileTypeFromBuffer(
-        req.file.buffer
-      );
+    const type = await fileTypeFromBuffer(req.file.buffer);
 
     const mimeType =
       type?.mime ||
       req.file.mimetype ||
       "image/jpeg";
 
-    // Async upload to Cloudinary (safely fall back to "" if it fails/unconfigured)
+    // Upload image to Cloudinary (optional)
     let image_url = "";
+
     try {
       const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+
       if (cloudName && cloudName.trim()) {
         image_url = await uploadToCloudinary(req.file.buffer);
-        console.log("Uploaded image to Cloudinary successfully:", image_url);
+        console.log("Uploaded image:", image_url);
       } else {
-        console.warn("Cloudinary not configured in .env. Skipping upload.");
+        console.warn("Cloudinary not configured.");
       }
-    } catch (uploadError) {
-      console.error("Cloudinary upload failed inside analyze_food:", uploadError.message);
+    } catch (err) {
+      console.error("Cloudinary Upload Error:", err.message);
     }
 
     const prompt = `
 Analyze this food image carefully.
 
 TASK:
-1. Identify all visible food items.
+1. Identify every visible food item.
 2. Estimate quantity in grams.
 
 IMPORTANT:
 - A coin may be present and should be used as scale reference.
-- If coin type is unclear assume 2.2 cm diameter.
-- Break multiple foods separately.
-- Use realistic Indian food serving sizes.
-- Return normalized common food names.
-- Include confidence score.
+- If the coin cannot be identified assume diameter = 2.2 cm.
+- Separate multiple food items.
+- Use realistic Indian serving sizes.
+- Normalize food names.
 
 Examples:
 Chapati -> roti
@@ -628,7 +840,13 @@ Phulka -> roti
 Curd -> yogurt
 Dahi -> yogurt
 
-Return ONLY JSON.
+Return ONLY valid JSON.
+
+Do NOT explain anything.
+Do NOT include markdown.
+Do NOT wrap response in \`\`\`json.
+
+Output format:
 
 {
   "foods": [
@@ -641,54 +859,74 @@ Return ONLY JSON.
 }
 `;
 
-    const response =
-      await generateContentWithFallback({
-        model: "gemini-2.5-flash",
-        contents: [
+    const base64Image = req.file.buffer.toString("base64");
+
+    const response = await axios.post(
+      "https://integrate.api.nvidia.com/v1/chat/completions",
+      {
+        model: "meta/llama-3.2-90b-vision-instruct",
+
+        messages: [
           {
-            text: prompt,
-          },
-          {
-            inlineData: {
-              mimeType,
-              data: req.file.buffer.toString(
-                "base64"
-              ),
-            },
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: prompt,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Image}`,
+                },
+              },
+            ],
           },
         ],
-      });
 
-    let geminiResult;
+        temperature: 0.2,
+        max_tokens: 500,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const aiText =
+      response.data.choices[0].message.content;
+
+    console.log("NVIDIA Response:");
+    console.log(aiText);
+
+    let aiResult;
 
     try {
-      geminiResult =
-        parseGeminiJson(
-          response.text
-        );
+      const cleanText = aiText
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
+
+      aiResult = JSON.parse(cleanText);
     } catch (err) {
-      console.error(
-        "Invalid Gemini JSON:",
-        response.text
-      );
+      console.error("Invalid JSON:");
+      console.error(aiText);
 
       return res.status(500).json({
         success: false,
-        message:
-          "Invalid AI response format",
+        message: "Invalid AI response format",
       });
     }
 
     if (
-      !geminiResult.foods ||
-      !Array.isArray(
-        geminiResult.foods
-      )
+      !aiResult.foods ||
+      !Array.isArray(aiResult.foods)
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Unable to detect food",
+        message: "Unable to detect food",
       });
     }
 
@@ -700,7 +938,7 @@ Return ONLY JSON.
     let totalFat = 0;
     let totalFiber = 0;
 
-    for (const detectedFood of geminiResult.foods) {
+    for (const detectedFood of aiResult.foods) {
       if (
         detectedFood.confidence &&
         detectedFood.confidence < 0.5
@@ -709,16 +947,13 @@ Return ONLY JSON.
       }
 
       const quantity = Number(
-        detectedFood.quantity_grams ||
-        0
+        detectedFood.quantity_grams || 0
       );
 
       const foodData =
         await getOrCreateFoodDataFromGemini(
           detectedFood.name
         );
-
-
 
       const nutrition =
         calculateNutrition(
@@ -729,10 +964,8 @@ Return ONLY JSON.
       foods.push({
         name: foodData.food_name,
         quantity_grams: quantity,
-        calories:
-          nutrition.calories,
-        protein:
-          nutrition.protein,
+        calories: nutrition.calories,
+        protein: nutrition.protein,
         carbs: nutrition.carbs,
         fat: nutrition.fat,
         fiber: nutrition.fiber,
@@ -766,21 +999,21 @@ Return ONLY JSON.
 
     return res.status(200).json({
       success: true,
-      firebase_uid:
-        req.firebase_uid,
+      firebase_uid: req.firebase_uid,
       data: finalResult,
-      image_url: image_url,
+      image_url,
     });
   } catch (error) {
     console.error(
-      "Analyze Food Error:",
-      error
+      "Analyze Food Error:"
+    );
+    console.error(
+      error.response?.data || error.message
     );
 
     return res.status(500).json({
       success: false,
-      message:
-        "Food analysis failed",
+      message: "Food analysis failed",
     });
   }
 };
