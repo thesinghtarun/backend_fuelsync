@@ -866,7 +866,8 @@ JSON format:
     const response = await axios.post(
       "https://integrate.api.nvidia.com/v1/chat/completions",
       {
-        model: "google/gemma-3-27b-it",//"meta/llama-3.2-90b-vision-instruct",
+        // model: "meta/llama-3.2-90b-vision-instruct",
+        model: "nvidia/neva-22b",
 
         messages: [
           {
