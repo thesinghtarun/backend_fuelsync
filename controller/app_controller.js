@@ -15,7 +15,7 @@ const crypto = require("crypto");
 const { razorpay } = require("../config/razor_pay");
 const { uploadToCloudinary } = require("../utils/cloudinary");
 const ACTIVITY = require("../models/activity_model");
-const activities=require("../data/activities");
+const activities = require("../data/activities");
 
 
 
@@ -321,7 +321,7 @@ const add_user = async (req, res) => {
           fiberGoal,
 
         calories_to_burn:
-          (targetCalories)+(caloriesToBurn),
+          (targetCalories) + (caloriesToBurn),
       });
 
     return res.status(201).json({
@@ -574,41 +574,258 @@ const login = async (req, res) => {
 // };
 
 
-// const analyze_food = async (
-//   req,
-//   res
-// ) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Image is required",
-//       });
-//     }
+const analyze_food = async (
+  req,
+  res
+) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Image is required",
+      });
+    }
 
-//     const type =
-//       await fileTypeFromBuffer(
-//         req.file.buffer
-//       );
+    const type =
+      await fileTypeFromBuffer(
+        req.file.buffer
+      );
 
-//     const mimeType =
-//       type?.mime ||
-//       req.file.mimetype ||
-//       "image/jpeg";
+    const mimeType =
+      type?.mime ||
+      req.file.mimetype ||
+      "image/jpeg";
 
-//     // Async upload to Cloudinary (safely fall back to "" if it fails/unconfigured)
-//     let image_url = "";
-//     try {
-//       const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-//       if (cloudName && cloudName.trim()) {
-//         image_url = await uploadToCloudinary(req.file.buffer);
-//         console.log("Uploaded image to Cloudinary successfully:", image_url);
-//       } else {
-//         console.warn("Cloudinary not configured in .env. Skipping upload.");
-//       }
-//     } catch (uploadError) {
-//       console.error("Cloudinary upload failed inside analyze_food:", uploadError.message);
-//     }
+    // Async upload to Cloudinary (safely fall back to "" if it fails/unconfigured)
+    let image_url = "";
+    try {
+      const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+      if (cloudName && cloudName.trim()) {
+        image_url = await uploadToCloudinary(req.file.buffer);
+        console.log("Uploaded image to Cloudinary successfully:", image_url);
+      } else {
+        console.warn("Cloudinary not configured in .env. Skipping upload.");
+      }
+    } catch (uploadError) {
+      console.error("Cloudinary upload failed inside analyze_food:", uploadError.message);
+    }
+
+    const prompt = `
+You are an expert Indian Food Recognition AI trained specifically for Indian cuisine.
+Your job is to analyze a food image and identify foods exactly the way an Indian person would name them.
+========================
+PRIMARY GOAL
+========================
+
+Recognize COMPLETE DISHES instead of individual ingredients whenever possible.
+
+Always prefer the actual dish name over listing its ingredients.
+
+Example:
+
+Image:
+Chicken Biryani
+
+Correct:
+
+{
+  "foods":[
+    {
+      "name":"Chicken Biryani",
+      "quantity_grams":450,
+      "confidence":0.99
+    }
+  ]
+}
+
+Wrong:
+
+{
+  "foods":[
+    {
+      "name":"Chicken"
+    },
+    {
+      "name":"Rice"
+    }
+  ]
+}
+
+
+========================
+VEGETABLE SABJI RULES
+========================
+
+If vegetables are cooked as sabji,
+return the Indian sabji name.
+
+Correct examples:
+
+Bhindi Sabji
+Patta Gobi Sabji
+Aloo Gobi
+Baingan Bharta
+Baingan Sabji
+Lauki Sabji
+Mix Veg
+Aloo Matar
+Gajar Matar
+
+Do NOT return:
+
+Okra
+Lady Finger
+Cabbage
+Eggplant
+
+
+Return:
+
+Bhindi
+Patta Gobi
+Baingan
+
+
+or the appropriate sabji name.
+
+========================
+NAME NORMALIZATION
+========================
+
+Always normalize names.
+
+Chapati -> Roti
+Phulka -> Roti
+Curd -> Dahi
+Yogurt -> Dahi
+
+Flatbread -> Roti
+
+Lady Finger -> Bhindi
+Okra -> Bhindi
+
+Bottle Gourd -> Lauki
+Ridge Gourd -> Turai
+Eggplant -> Baingan
+Spinach -> Palak
+Cauliflower -> Gobhi
+Cabbage -> Patta Gobi
+
+Lentil Curry -> Dal
+Chickpea Curry -> Chole
+Kidney Bean Curry -> Rajma
+
+========================
+MULTIPLE FOODS
+========================
+
+If foods are clearly served separately,
+return them separately.
+
+Example:
+
+Rice
+Dal
+Salad
+
+Return
+
+{
+  "foods":[
+    {
+      "name":"Plain Rice",
+      "quantity_grams":180,
+      "confidence":0.99
+    },
+    {
+      "name":"Dal Tadka",
+      "quantity_grams":140,
+      "confidence":0.98
+    },
+    {
+      "name":"Salad",
+      "quantity_grams":40,
+      "confidence":0.98
+    }
+  ]
+}
+
+========================
+DO NOT SPLIT DISHES
+========================
+
+Never split these into ingredients:
+
+Chicken Biryani
+Veg Biryani
+Butter Chicken
+Paneer Butter Masala
+Rajma Chawal
+Chole Bhature
+Khichdi
+Pizza
+Burger
+Sandwich
+Fried Rice
+Pulao
+Pav Bhaji
+
+Always return the dish name.
+
+========================
+QUANTITY
+========================
+
+Estimate quantity in grams.
+
+Use realistic Indian serving sizes.
+
+If a coin is visible,
+use it as a scale reference.
+
+If the coin cannot be identified,
+assume diameter = 2.2 cm.
+
+========================
+CONFIDENCE
+========================
+
+Return confidence between 0.00 and 1.00.
+
+========================
+STRICT OUTPUT RULES
+========================
+
+Return ONLY valid JSON.
+
+Do NOT explain anything.
+
+Do NOT include markdown.
+
+Do NOT include **Answer**.
+
+Do NOT include any text before JSON.
+
+Do NOT include any text after JSON.
+
+The first character of your response MUST be {
+
+The last character of your response MUST be }
+
+========================
+JSON SCHEMA
+========================
+
+{
+  "foods": [
+    {
+      "name": "",
+      "quantity_grams": 0,
+      "confidence": 0.95
+    }
+  ]
+}
+`;
 
 //     const prompt = `
 // Analyze this food image carefully.
@@ -644,292 +861,54 @@ const login = async (req, res) => {
 // }
 // `;
 
-//     const response =
-//       await generateContentWithFallback({
-//         model: "gemini-2.5-flash",
-//         contents: [
-//           {
-//             text: prompt,
-//           },
-//           {
-//             inlineData: {
-//               mimeType,
-//               data: req.file.buffer.toString(
-//                 "base64"
-//               ),
-//             },
-//           },
-//         ],
-//       });
+    const response =
+      await generateContentWithFallback({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            text: prompt,
+          },
+          {
+            inlineData: {
+              mimeType,
+              data: req.file.buffer.toString(
+                "base64"
+              ),
+            },
+          },
+        ],
+      });
 
-//     let geminiResult;
+    let geminiResult;
 
-//     try {
-//       geminiResult =
-//         parseGeminiJson(
-//           response.text
-//         );
-//     } catch (err) {
-//       console.error(
-//         "Invalid Gemini JSON:",
-//         response.text
-//       );
+    try {
+      geminiResult =
+        parseGeminiJson(
+          response.text
+        );
+    } catch (err) {
+      console.error(
+        "Invalid Gemini JSON:",
+        response.text
+      );
 
-//       return res.status(500).json({
-//         success: false,
-//         message:
-//           "Invalid AI response format",
-//       });
-//     }
-
-//     if (
-//       !geminiResult.foods ||
-//       !Array.isArray(
-//         geminiResult.foods
-//       )
-//     ) {
-//       return res.status(400).json({
-//         success: false,
-//         message:
-//           "Unable to detect food",
-//       });
-//     }
-
-//     const foods = [];
-
-//     let totalCalories = 0;
-//     let totalProtein = 0;
-//     let totalCarbs = 0;
-//     let totalFat = 0;
-//     let totalFiber = 0;
-
-//     for (const detectedFood of geminiResult.foods) {
-//       if (
-//         detectedFood.confidence &&
-//         detectedFood.confidence < 0.5
-//       ) {
-//         continue;
-//       }
-
-//       const quantity = Number(
-//         detectedFood.quantity_grams ||
-//         0
-//       );
-
-//       const foodData =
-//         await getOrCreateFoodDataFromGemini(
-//           detectedFood.name
-//         );
-
-
-
-//       const nutrition =
-//         calculateNutrition(
-//           foodData,
-//           quantity
-//         );
-
-//       foods.push({
-//         name: foodData.food_name,
-//         quantity_grams: quantity,
-//         calories:
-//           nutrition.calories,
-//         protein:
-//           nutrition.protein,
-//         carbs: nutrition.carbs,
-//         fat: nutrition.fat,
-//         fiber: nutrition.fiber,
-//       });
-
-//       totalCalories += nutrition.calories;
-//       totalProtein += nutrition.protein;
-//       totalCarbs += nutrition.carbs;
-//       totalFat += nutrition.fat;
-//       totalFiber += nutrition.fiber;
-//     }
-
-//     const finalResult = {
-//       foods,
-//       total_calories: Number(
-//         totalCalories.toFixed(1)
-//       ),
-//       total_protein: Number(
-//         totalProtein.toFixed(1)
-//       ),
-//       total_carbs: Number(
-//         totalCarbs.toFixed(1)
-//       ),
-//       total_fat: Number(
-//         totalFat.toFixed(1)
-//       ),
-//       total_fiber: Number(
-//         totalFiber.toFixed(1)
-//       ),
-//     };
-
-//     return res.status(200).json({
-//       success: true,
-//       firebase_uid:
-//         req.firebase_uid,
-//       data: finalResult,
-//       image_url: image_url,
-//     });
-//   } catch (error) {
-//     console.error(
-//       "Analyze Food Error:",
-//       error
-//     );
-
-//     return res.status(500).json({
-//       success: false,
-//       message:
-//         "Food analysis failed",
-//     });
-//   }
-// };
-
-function extractJson(text) {
-  // Remove markdown code fences
-  text = text
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
-    .trim();
-
-  // Extract the JSON object
-  const match = text.match(/\{[\s\S]*\}/);
-
-  if (!match) {
-    throw new Error("No JSON found");
-  }
-
-  return match[0];
-}
-
-const analyze_food = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
+      return res.status(500).json({
         success: false,
-        message: "Image is required",
+        message:
+          "Invalid AI response format",
       });
     }
 
-    const type = await fileTypeFromBuffer(req.file.buffer);
-
-    const mimeType =
-      type?.mime ||
-      req.file.mimetype ||
-      "image/jpeg";
-
-    // Upload image to Cloudinary (optional)
-    let image_url = "";
-
-    try {
-      const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-
-      if (cloudName && cloudName.trim()) {
-        image_url = await uploadToCloudinary(req.file.buffer);
-        console.log("Uploaded image:", image_url);
-      } else {
-        console.warn("Cloudinary not configured.");
-      }
-    } catch (err) {
-      console.error("Cloudinary Upload Error:", err.message);
-    }
-
-const prompt=
-`You are an Indian food recognition AI.
-
-Rules:
-- Identify the complete dish name, not individual ingredients.
-- If rice and chicken appear together as a biryani dish, return "Chicken Biryani", not "Chicken" and "Rice".
-- Use common Indian names such as Chicken Biryani, Paneer Butter Masala, Dal Tadka, Rajma, Chole, Roti, Bhindi, Aloo Gobi, Pav Bhaji, Samosa, Idli, Dosa, etc.
-- If multiple foods are clearly separate, return them separately.
-- Estimate quantity in grams.
-
-Return ONLY valid JSON.
-
-JSON format:
-{
-"foods": [
-{
-"name": "",
-"quantity_grams": 0,
-"confidence": 0.0
-}
-]
-}
-`;
-
-    const base64Image = req.file.buffer.toString("base64");
-
-    const response = await axios.post(
-      "https://integrate.api.nvidia.com/v1/chat/completions",
-      {
-        // model: "meta/llama-3.2-90b-vision-instruct",
-        model: "nvidia/neva-22b",
-
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: prompt,
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64Image}`,
-                },
-              },
-            ],
-          },
-        ],
-
-        temperature: 0.2,
-        max_tokens: 500,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const aiText =
-      response.data.choices[0].message.content;
-
-    console.log("NVIDIA Response:");
-    console.log(aiText);
-
-    let aiResult;
-
-try {
-  const json = extractJson(aiText);
-
-  console.log("Extracted JSON:");
-  console.log(json);
-
-  aiResult = JSON.parse(json);
-} catch (err) {
-  console.error("JSON Parse Error:", err.message);
-  console.error("Raw AI Response:", aiText);
-
-  return res.status(500).json({
-    success: false,
-    message: "Invalid AI response format",
-  });
-}
-
     if (
-      !aiResult.foods ||
-      !Array.isArray(aiResult.foods)
+      !geminiResult.foods ||
+      !Array.isArray(
+        geminiResult.foods
+      )
     ) {
       return res.status(400).json({
         success: false,
-        message: "Unable to detect food",
+        message:
+          "Unable to detect food",
       });
     }
 
@@ -941,7 +920,7 @@ try {
     let totalFat = 0;
     let totalFiber = 0;
 
-    for (const detectedFood of aiResult.foods) {
+    for (const detectedFood of geminiResult.foods) {
       if (
         detectedFood.confidence &&
         detectedFood.confidence < 0.5
@@ -950,13 +929,16 @@ try {
       }
 
       const quantity = Number(
-        detectedFood.quantity_grams || 0
+        detectedFood.quantity_grams ||
+        0
       );
 
       const foodData =
         await getOrCreateFoodDataFromGemini(
           detectedFood.name
         );
+
+
 
       const nutrition =
         calculateNutrition(
@@ -967,8 +949,10 @@ try {
       foods.push({
         name: foodData.food_name,
         quantity_grams: quantity,
-        calories: nutrition.calories,
-        protein: nutrition.protein,
+        calories:
+          nutrition.calories,
+        protein:
+          nutrition.protein,
         carbs: nutrition.carbs,
         fat: nutrition.fat,
         fiber: nutrition.fiber,
@@ -1002,24 +986,258 @@ try {
 
     return res.status(200).json({
       success: true,
-      firebase_uid: req.firebase_uid,
+      firebase_uid:
+        req.firebase_uid,
       data: finalResult,
-      image_url,
+      image_url: image_url,
     });
   } catch (error) {
     console.error(
-      "Analyze Food Error:"
-    );
-    console.error(
-      error.response?.data || error.message
+      "Analyze Food Error:",
+      error
     );
 
     return res.status(500).json({
       success: false,
-      message: "Food analysis failed",
+      message:
+        "Food analysis failed",
     });
   }
 };
+
+// function extractJson(text) {
+//   // Remove markdown code fences
+//   text = text
+//     .replace(/```json/gi, "")
+//     .replace(/```/g, "")
+//     .trim();
+
+//   // Extract the JSON object
+//   const match = text.match(/\{[\s\S]*\}/);
+
+//   if (!match) {
+//     throw new Error("No JSON found");
+//   }
+
+//   return match[0];
+// }
+
+// const analyze_food = async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Image is required",
+//       });
+//     }
+
+//     const type = await fileTypeFromBuffer(req.file.buffer);
+
+//     const mimeType =
+//       type?.mime ||
+//       req.file.mimetype ||
+//       "image/jpeg";
+
+//     // Upload image to Cloudinary (optional)
+//     let image_url = "";
+
+//     try {
+//       const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+
+//       if (cloudName && cloudName.trim()) {
+//         image_url = await uploadToCloudinary(req.file.buffer);
+//         console.log("Uploaded image:", image_url);
+//       } else {
+//         console.warn("Cloudinary not configured.");
+//       }
+//     } catch (err) {
+//       console.error("Cloudinary Upload Error:", err.message);
+//     }
+
+//     const prompt =
+//       `You are an Indian food recognition AI.
+
+// Rules:
+// - Identify the complete dish name, not individual ingredients.
+// - If rice and chicken appear together as a biryani dish, return "Chicken Biryani", not "Chicken" and "Rice".
+// - Use common Indian names such as Chicken Biryani, Paneer Butter Masala, Dal Tadka, Rajma, Chole, Roti, Bhindi, Aloo Gobi, Pav Bhaji, Samosa, Idli, Dosa, etc.
+// - If multiple foods are clearly separate, return them separately.
+// - Estimate quantity in grams.
+
+// Return ONLY valid JSON.
+
+// JSON format:
+// {
+// "foods": [
+// {
+// "name": "",
+// "quantity_grams": 0,
+// "confidence": 0.0
+// }
+// ]
+// }
+// `;
+
+//     // const base64Image = req.file.buffer.toString("base64");
+
+//     const response = await axios.post(
+//       "https://integrate.api.nvidia.com/v1/chat/completions",
+//       {
+//         model: "meta/llama-3.2-90b-vision-instruct",
+//         // model: "microsoft/phi-4-multimodal-instruct",
+//         // model: "nvidia/neva-22b",
+
+//         messages: [
+//           {
+//             role: "user",
+//             content: [
+//               {
+//                 type: "text",
+//                 text: prompt,
+//               },
+//               {
+//                 type: "image_url",
+//                 image_url: {
+//                   url: image_url,
+//                 },
+//               },
+//             ],
+//           },
+//         ],
+
+//         temperature: 0.2,
+//         max_tokens: 500,
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
+//           "Content-Type": "application/json",
+//         },
+//       }
+//     );
+
+//     const aiText =
+//       response.data.choices[0].message.content;
+
+//     console.log("NVIDIA Response:");
+//     console.log(aiText);
+
+//     let aiResult;
+
+//     try {
+//       const json = extractJson(aiText);
+
+//       console.log("Extracted JSON:");
+//       console.log(json);
+
+//       aiResult = JSON.parse(json);
+//     } catch (err) {
+//       console.error("JSON Parse Error:", err.message);
+//       console.error("Raw AI Response:", aiText);
+
+//       return res.status(500).json({
+//         success: false,
+//         message: "Invalid AI response format",
+//       });
+//     }
+
+//     if (
+//       !aiResult.foods ||
+//       !Array.isArray(aiResult.foods)
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Unable to detect food",
+//       });
+//     }
+
+//     const foods = [];
+
+//     let totalCalories = 0;
+//     let totalProtein = 0;
+//     let totalCarbs = 0;
+//     let totalFat = 0;
+//     let totalFiber = 0;
+
+//     for (const detectedFood of aiResult.foods) {
+//       if (
+//         detectedFood.confidence &&
+//         detectedFood.confidence < 0.5
+//       ) {
+//         continue;
+//       }
+
+//       const quantity = Number(
+//         detectedFood.quantity_grams || 0
+//       );
+
+//       const foodData =
+//         await getOrCreateFoodDataFromGemini(
+//           detectedFood.name
+//         );
+
+//       const nutrition =
+//         calculateNutrition(
+//           foodData,
+//           quantity
+//         );
+
+//       foods.push({
+//         name: foodData.food_name,
+//         quantity_grams: quantity,
+//         calories: nutrition.calories,
+//         protein: nutrition.protein,
+//         carbs: nutrition.carbs,
+//         fat: nutrition.fat,
+//         fiber: nutrition.fiber,
+//       });
+
+//       totalCalories += nutrition.calories;
+//       totalProtein += nutrition.protein;
+//       totalCarbs += nutrition.carbs;
+//       totalFat += nutrition.fat;
+//       totalFiber += nutrition.fiber;
+//     }
+
+//     const finalResult = {
+//       foods,
+//       total_calories: Number(
+//         totalCalories.toFixed(1)
+//       ),
+//       total_protein: Number(
+//         totalProtein.toFixed(1)
+//       ),
+//       total_carbs: Number(
+//         totalCarbs.toFixed(1)
+//       ),
+//       total_fat: Number(
+//         totalFat.toFixed(1)
+//       ),
+//       total_fiber: Number(
+//         totalFiber.toFixed(1)
+//       ),
+//     };
+
+//     return res.status(200).json({
+//       success: true,
+//       firebase_uid: req.firebase_uid,
+//       data: finalResult,
+//       image_url,
+//     });
+//   } catch (error) {
+//     console.error(
+//       "Analyze Food Error:"
+//     );
+//     console.error(
+//       error.response?.data || error.message
+//     );
+
+//     return res.status(500).json({
+//       success: false,
+//       message: "Food analysis failed",
+//     });
+//   }
+// };
 
 
 const recalculate_food = async (req, res) => {
@@ -1228,7 +1446,7 @@ const updateGoal = async (req, res) => {
         ...(fiber_goal != null && {
           fiber_goal: Number(fiber_goal),
         }),
-         ...(calories_to_burn != null && {
+        ...(calories_to_burn != null && {
           calories_to_burn: Number(calories_to_burn),
         }),
       },
@@ -1956,8 +2174,8 @@ const verifyPayment =
     }
   };
 
-  //GET ACTIVITIES
-  const getActivities =
+//GET ACTIVITIES
+const getActivities =
   async (req, res) => {
     try {
       return res.status(200).json({
@@ -1976,17 +2194,17 @@ const verifyPayment =
     }
   };
 
-  //ADD ACTIVITY
-  const addActivity =
+//ADD ACTIVITY
+const addActivity =
   async (req, res) => {
     try {
-    const firebase_uid =
-      req.user.uid; 
+      const firebase_uid =
+        req.user.uid;
 
-    const {
-      activity_id,
-      duration,
-    } = req.body;
+      const {
+        activity_id,
+        duration,
+      } = req.body;
 
       if (
         !firebase_uid ||
@@ -2020,8 +2238,8 @@ const verifyPayment =
       const calories =
         Math.round(
           (selected.caloriesPer10Min /
-              10) *
-              duration
+            10) *
+          duration
         );
 
       const entry = {
@@ -2038,32 +2256,32 @@ const verifyPayment =
           new Date(),
       };
 
-     const result =
-  await ACTIVITY.findOneAndUpdate(
-    {
-      firebase_uid,
-    },
-    {
-      $push: {
-        activities: entry,
-      },
-    },
-    {
-      upsert: true,
-      new: true,
-    }
-  );
+      const result =
+        await ACTIVITY.findOneAndUpdate(
+          {
+            firebase_uid,
+          },
+          {
+            $push: {
+              activities: entry,
+            },
+          },
+          {
+            upsert: true,
+            new: true,
+          }
+        );
 
-// get last inserted activity
-const savedActivity =
-  result.activities[
-    result.activities.length - 1
-  ];
+      // get last inserted activity
+      const savedActivity =
+        result.activities[
+        result.activities.length - 1
+        ];
 
-return res.status(201).json({
-  success: true,
-  data: savedActivity,
-});
+      return res.status(201).json({
+        success: true,
+        data: savedActivity,
+      });
       return res.status(201)
         .json({
           success: true,
@@ -2081,7 +2299,7 @@ return res.status(201).json({
     }
   };
 
-  //GET USER ACTIVITIES
+//GET USER ACTIVITIES
 //GET USER ACTIVITIES
 const getUserActivities = async (req, res) => {
   try {
@@ -2121,88 +2339,88 @@ const getUserActivities = async (req, res) => {
   }
 };
 
-  //DELETE ACTIVITY
-  const deleteActivity =
-async (req, res) => {
-  try {
-    const firebase_uid =
-      req.user.uid;
+//DELETE ACTIVITY
+const deleteActivity =
+  async (req, res) => {
+    try {
+      const firebase_uid =
+        req.user.uid;
 
-    const {
-      activityId,
-    } = req.params;
+      const {
+        activityId,
+      } = req.params;
 
-    if (!activityId) {
-      return res
-        .status(400)
-        .json({
-          success:
+      if (!activityId) {
+        return res
+          .status(400)
+          .json({
+            success:
               false,
 
-          message:
+            message:
               "Activity id required",
-        });
-    }
+          });
+      }
 
-    const updated =
-      await ACTIVITY.findOneAndUpdate(
-        {
-          firebase_uid,
-        },
+      const updated =
+        await ACTIVITY.findOneAndUpdate(
+          {
+            firebase_uid,
+          },
 
-        {
-          $pull: {
-            activities: {
-              _id:
-                activityId,
+          {
+            $pull: {
+              activities: {
+                _id:
+                  activityId,
+              },
             },
           },
-        },
 
-        {
-          new: true,
-        },
-      );
+          {
+            new: true,
+          },
+        );
 
-    if (!updated) {
-      return res
-        .status(404)
-        .json({
-          success:
+      if (!updated) {
+        return res
+          .status(404)
+          .json({
+            success:
               false,
 
-          message:
+            message:
               "Activity not found",
-        });
-    }
+          });
+      }
 
-    return res
-      .status(200)
-      .json({
-        success:
+      return res
+        .status(200)
+        .json({
+          success:
             true,
 
-        message:
+          message:
             "Activity deleted",
 
-        data:
+          data:
             updated
-                .activities,
-      });
-  } catch (e) {
-    console.log(e);
+              .activities,
+        });
+    } catch (e) {
+      console.log(e);
 
-    return res
-      .status(500)
-      .json({
-        success:
+      return res
+        .status(500)
+        .json({
+          success:
             false,
 
-        message:
+          message:
             "Internal Server Error",
-      });
-  }
-};
+        });
+    }
+  };
 
 module.exports = {
   add_user, remove_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, creditsCost, getPlans, createOrder, verifyPayment, getActivities, addActivity, getUserActivities, deleteActivity
