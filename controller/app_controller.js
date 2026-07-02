@@ -788,6 +788,23 @@ const login = async (req, res) => {
 //   }
 // };
 
+function extractJson(text) {
+  // Remove markdown code fences
+  text = text
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  // Extract the JSON object
+  const match = text.match(/\{[\s\S]*\}/);
+
+  if (!match) {
+    throw new Error("No JSON found");
+  }
+
+  return match[0];
+}
+
 const analyze_food = async (req, res) => {
   try {
     if (!req.file) {
@@ -1165,22 +1182,22 @@ JSON SCHEMA
 
     let aiResult;
 
-    try {
-      const cleanText = aiText
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
+try {
+  const json = extractJson(aiText);
 
-      aiResult = JSON.parse(cleanText);
-    } catch (err) {
-      console.error("Invalid JSON:");
-      console.error(aiText);
+  console.log("Extracted JSON:");
+  console.log(json);
 
-      return res.status(500).json({
-        success: false,
-        message: "Invalid AI response format",
-      });
-    }
+  aiResult = JSON.parse(json);
+} catch (err) {
+  console.error("JSON Parse Error:", err.message);
+  console.error("Raw AI Response:", aiText);
+
+  return res.status(500).json({
+    success: false,
+    message: "Invalid AI response format",
+  });
+}
 
     if (
       !aiResult.foods ||
