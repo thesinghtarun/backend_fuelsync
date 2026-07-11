@@ -1,4 +1,5 @@
 const USERS = require("../models/users.model");
+const CREDIT_TRANSACTIONS = require("../models/credit_transaction.model");
 const { fileTypeFromBuffer } = require("file-type");
 const admin = require("../config/firebase");
 
@@ -16,6 +17,7 @@ const { razorpay } = require("../config/razor_pay");
 const { uploadToCloudinary } = require("../utils/cloudinary");
 const ACTIVITY = require("../models/activity_model");
 const activities = require("../data/activities");
+const { log } = require("console");
 
 
 
@@ -1884,24 +1886,115 @@ const scanFood = async (req, res) => {
 const deductCredit = async (req, res) => {
   try {
     const firebase_uid = req.firebase_uid;
-    const { reduceCredit } = req.body;
+    const { reduceCredit, reason } = req.body;
 
-    const user = await USERS.findOneAndUpdate(
-      { firebase_uid },
-      { $inc: { credits: -reduceCredit } },
-      { new: true }
-    );
+    if (!reduceCredit || reduceCredit <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid credit amount" });
+    }
+
+    const user = await USERS.findOne({ firebase_uid });
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
+
+    if (user.credits < reduceCredit) {
+      return res.status(400).json({ success: false, message: "Insufficient credits" });
+    }
+
+    user.credits -= reduceCredit;
+    await user.save();
+
+    console.log("Before transaction")
+
+    // Log transaction
+    const transaction=await CREDIT_TRANSACTIONS.create({
+      firebase_uid,
+      type: "debit",
+      amount: reduceCredit,
+      reason: reason || "AI Analysis",
+      balance_after: user.credits,
+    });
+
+    console.log("TRANSACTION SAVED");
+  console.log(transaction);
 
     return res.status(200).json({
       success: true,
       credits: user.credits,
+    });
+  } catch (e) {
+    console.log(`Transaction err: ${e}`)
+    return res.status(500).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
+
+//ROLLBACK CREDITS (called when a task fails after credits were deducted)
+const rollbackCredit = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+    const { amount, reason } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid amount" });
+    }
+
+    const user = await USERS.findOne({ firebase_uid });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    user.credits += amount;
+    await user.save();
+
+    await CREDIT_TRANSACTIONS.create({
+      firebase_uid,
+      type: "credit",
+      amount,
+      reason: reason || "Rollback - Task Failed",
+      balance_after: user.credits,
+    });
+
+    return res.status(200).json({
+      success: true,
+      credits: user.credits,
+    });
+  } catch (e) {
+    console.log(`Transaction err: ${e}`)
+    return res.status(500).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
+
+//GET CREDIT TRANSACTION HISTORY
+const getCreditTransactions = async (req, res) => {
+  try {
+    const firebase_uid = req.firebase_uid;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const [transactions, total] = await Promise.all([
+      CREDIT_TRANSACTIONS
+        .find({ firebase_uid })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      CREDIT_TRANSACTIONS.countDocuments({ firebase_uid }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: transactions,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
     });
   } catch (e) {
     return res.status(500).json({
@@ -2146,6 +2239,15 @@ const verifyPayment =
         + credits;
 
       await user.save();
+
+      // Log credit purchase transaction
+      await CREDIT_TRANSACTIONS.create({
+        firebase_uid: req.firebase_uid,
+        type: "credit",
+        amount: credits,
+        reason: `Credits purchased via Razorpay (${razorpay_payment_id})`,
+        balance_after: user.credits,
+      });
 
       console.log(
         "UPDATED USER =>",
@@ -2423,5 +2525,5 @@ const deleteActivity =
   };
 
 module.exports = {
-  add_user, remove_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, creditsCost, getPlans, createOrder, verifyPayment, getActivities, addActivity, getUserActivities, deleteActivity
+  add_user, remove_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, rollbackCredit, getCreditTransactions, creditsCost, getPlans, createOrder, verifyPayment, getActivities, addActivity, getUserActivities, deleteActivity
 };

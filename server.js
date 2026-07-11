@@ -26,6 +26,8 @@ const {
   searchFood,
   scanFood,
   deductCredit,
+  rollbackCredit,
+  getCreditTransactions,
   creditsCost,
   getPlans,
   createOrder,
@@ -103,6 +105,12 @@ app.get("/fuelsync/credits/cost", creditsCost);
 
 //DEDUCT CREDIT
 app.post("/fuelsync/credits/deduct", deductCredit);
+
+//ROLLBACK CREDIT
+app.post("/fuelsync/credits/rollback", rollbackCredit);
+
+//GET CREDIT TRANSACTION HISTORY
+app.get("/fuelsync/credits/transactions", getCreditTransactions);
 
 // CREATE PAYMENT ORDER
 app.post("/fuelsync/payment/order", createOrder);
