@@ -46,6 +46,11 @@ const activitySchema =
       activities: [
         performedActivitySchema,
       ],
+
+      steps: {
+        type: Number,
+        default: 0,
+      },
     },
     {
       timestamps: true,

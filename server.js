@@ -35,7 +35,8 @@ const {
   getActivities,
   addActivity,
   getUserActivities,
-  deleteActivity
+  deleteActivity,
+  updateSteps
 } = require("./controller/app_controller");
 
 const app = express();
@@ -129,6 +130,9 @@ app.get("/fuelsync/get/user/activities", getUserActivities);
 
 //DELETE ACTIVITY
 app.delete("/fuelsync/delete/activity/:activityId", deleteActivity);
+
+//UPDATE STEPS
+app.post("/fuelsync/post/steps", updateSteps);
 
 
 

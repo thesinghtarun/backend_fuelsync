@@ -2415,6 +2415,7 @@ const getUserActivities = async (req, res) => {
       return res.status(200).json({
         success: true,
         data: [],
+        steps: 0,
       });
     }
 
@@ -2430,10 +2431,44 @@ const getUserActivities = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: sortedActivities,
+      steps: userActivities.steps || 0,
     });
   } catch (e) {
     console.log(e);
 
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
+//UPDATE STEPS
+const updateSteps = async (req, res) => {
+  try {
+    const firebase_uid = req.user.uid;
+    const { steps } = req.body;
+
+    if (steps === undefined || steps === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Steps required",
+      });
+    }
+
+    const result = await ACTIVITY.findOneAndUpdate(
+      { firebase_uid },
+      { steps: Number(steps) },
+      { upsert: true, new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Steps updated successfully",
+      steps: result.steps,
+    });
+  } catch (e) {
+    console.error("UPDATE STEPS ERROR =>", e);
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
@@ -2525,5 +2560,5 @@ const deleteActivity =
   };
 
 module.exports = {
-  add_user, remove_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, rollbackCredit, getCreditTransactions, creditsCost, getPlans, createOrder, verifyPayment, getActivities, addActivity, getUserActivities, deleteActivity
+  add_user, remove_user, login, analyze_food, recalculate_food, saveMeal, getTodayConsumption, updateGoal, deleteMeal, getWeeklyReport, getMonthlyReport, searchFood, scanFood, deductCredit, rollbackCredit, getCreditTransactions, creditsCost, getPlans, createOrder, verifyPayment, getActivities, addActivity, getUserActivities, deleteActivity, updateSteps
 };
